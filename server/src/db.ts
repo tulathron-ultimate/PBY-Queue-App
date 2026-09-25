@@ -110,6 +110,9 @@ export function openDb(path: string): DB {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
+  // SEC-3: overwrite deleted content with zeros, so purged names and phone numbers don't
+  // linger in free pages until the weekly VACUUM.
+  db.pragma('secure_delete = ON');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
   const version = db.pragma('user_version', { simple: true }) as number;

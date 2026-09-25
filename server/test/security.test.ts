@@ -4,6 +4,9 @@
  */
 import type { HostSnapshot } from '@pby/shared';
 import type { FastifyInstance } from 'fastify';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, type AppContext } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
@@ -155,5 +158,30 @@ describe('SEC-2 security headers', () => {
     // No HSTS over plain HTTP (LAN testing): browsers ignore it there anyway.
     expect(hostRes.headers['strict-transport-security']).toBeUndefined();
     expect(hostRes.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
+describe('SEC-3 purge really deletes', () => {
+  it('leaves no guest names or phone numbers in the database file or its WAL', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pby-sec-'));
+    try {
+      const h = await setup({ DATABASE_PATH: join(dir, 'q.db') });
+      for (let i = 0; i < 20; i++) await addManual(h, `Zyxquor Family${i}`, `555-201-88${10 + i}`);
+      await host(h, 'PATCH', `/parties/${(await snap(h)).parties[0].id}`, {
+        notes: 'Qwertnotes secret',
+      });
+      expect((await host(h, 'POST', '/delete')).statusCode).toBe(200);
+      const bytes = ['q.db', 'q.db-wal']
+        .map((f) => join(dir, f))
+        .filter(existsSync)
+        .map((f) => readFileSync(f).toString('latin1'))
+        .join('');
+      expect(bytes).not.toContain('Zyxquor');
+      expect(bytes).not.toContain('Qwertnotes');
+      expect(bytes).not.toContain('+155520188');
+    } finally {
+      while (apps.length) await apps.pop()!.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
