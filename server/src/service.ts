@@ -32,6 +32,7 @@ import {
   type HostSnapshot,
   type ImportPartyInput,
   type JoinInfo,
+  type LobbySnapshot,
   type MoveDirection,
   type PartyState,
   type PartySource,
@@ -44,12 +45,19 @@ import {
 } from '@pby/shared';
 import type { Config } from './config.js';
 import { getMeta, setMeta, type DB } from './db.js';
+import { hashLobbyToken, LOBBY_TOKEN_PATTERN, newLobbyToken, sameLobbyToken } from './lobby.js';
 import { QUEUE_ERROR_MESSAGES, ServiceError } from './errors.js';
 import { purgeEvent } from './retention.js';
 import { hashPin, newId, newJoinCode, newStatusToken, randomString, sha256 } from './security.js';
 import { Sessions } from './sessions.js';
 import { tapToSend, TWILIO_UNSUBSCRIBED, type SmsProvider } from './sms/provider.js';
-import { buildGuestSnapshot, buildHostSnapshot, buildJoinInfo, renderBody } from './snapshots.js';
+import {
+  buildGuestSnapshot,
+  buildHostSnapshot,
+  buildJoinInfo,
+  buildLobbySnapshot,
+  renderBody,
+} from './snapshots.js';
 import { Store, type EventRecord, type PartyRecord } from './store.js';
 
 export interface Logger {
@@ -200,6 +208,8 @@ export class QueueService {
       paused: false,
       pauseMessage: null,
       pausedAt: null,
+      lobbyToken: null,
+      lobbyTokenHash: null,
     };
     this.store.insertEvent(event);
     this.log.info({ event: event.id }, 'event created');
@@ -269,6 +279,45 @@ export class QueueService {
       if (event && party) out.set(id, buildGuestSnapshot(event, parties, party, this.now()));
     }
     return out;
+  }
+
+  /** The event a lobby display token belongs to: looked up by hash, compared in constant time. */
+  lobbyEvent(token: string): EventRecord | null {
+    if (!LOBBY_TOKEN_PATTERN.test(token)) return null;
+    const event = this.store.getEventByLobbyHash(hashLobbyToken(token));
+    if (!event || event.purgedAt || !event.lobbyToken) return null;
+    return sameLobbyToken(event.lobbyToken, token) ? event : null;
+  }
+
+  /** G5 lobby display payload for a token, or null when it is unknown or was revoked. */
+  lobbySnapshot(token: string): LobbySnapshot | null {
+    const event = this.lobbyEvent(token);
+    return event ? buildLobbySnapshot(event, this.store.listParties(event.id)) : null;
+  }
+
+  /** The event's current lobby token and payload, for broadcasting to open displays. */
+  lobbyForEvent(eventId: string): { token: string; snapshot: LobbySnapshot } | null {
+    const event = this.getEvent(eventId);
+    if (!event?.lobbyToken) return null;
+    return {
+      token: event.lobbyToken,
+      snapshot: buildLobbySnapshot(event, this.store.listParties(eventId)),
+    };
+  }
+
+  /**
+   * G5: makes a new lobby display link (replacing any old one, which stops working) or, with
+   * `on` false, revokes it. Open displays on an old link are disconnected by the hub.
+   */
+  setLobbyLink(eventId: string, on: boolean): void {
+    this.requireEvent(eventId, on ? { open: true } : {});
+    const token = on ? newLobbyToken() : null;
+    this.store.updateEvent(eventId, {
+      lobbyToken: token,
+      lobbyTokenHash: token ? hashLobbyToken(token) : null,
+    });
+    this.log.info({ event: eventId, lobby: on ? 'new link' : 'revoked' }, 'lobby link');
+    this.onChange(eventId);
   }
 
   joinInfo(code: string): JoinInfo | null {

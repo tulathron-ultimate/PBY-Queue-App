@@ -83,6 +83,18 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
       return snapshot(req.params.id);
     });
 
+    /** G5: make (or replace) the lobby display link, or turn it off. */
+    host.post<EventParams>('/api/host/events/:id/lobby', async (req) => {
+      service.setLobbyLink(req.params.id, true);
+      ctx.hub.broadcastLobbies(req.params.id); // displays on the old link disconnect now
+      return snapshot(req.params.id);
+    });
+    host.post<EventParams>('/api/host/events/:id/lobby/revoke', async (req) => {
+      service.setLobbyLink(req.params.id, false);
+      ctx.hub.broadcastLobbies(req.params.id);
+      return snapshot(req.params.id);
+    });
+
     host.post<EventParams>('/api/host/events/:id/undo', async (req) => {
       const { label } = service.undo(req.params.id);
       return { ...snapshot(req.params.id), undone: label };

@@ -12,6 +12,8 @@ export class Hub {
   /** Host sockets per event, with the session token each one was opened with. */
   private hosts = new Map<string, Map<WebSocket, string>>();
   private guests = new Map<string, Map<WebSocket, string>>();
+  /** G5 lobby displays per event, with the lobby token each one was opened with. */
+  private lobbies = new Map<string, Map<WebSocket, string>>();
   private scheduled = new Set<string>();
   private timer: NodeJS.Timeout;
 
@@ -53,6 +55,33 @@ export class Hub {
     if (snap) Hub.send(ws, { type: 'guest', data: snap });
   }
 
+  addLobby(eventId: string, ws: WebSocket, token: string): void {
+    const map = this.lobbies.get(eventId) ?? new Map<WebSocket, string>();
+    map.set(ws, token);
+    this.lobbies.set(eventId, map);
+    ws.on('close', () => {
+      map.delete(ws);
+      if (!map.size) this.lobbies.delete(eventId);
+    });
+    const lobby = this.service.lobbyForEvent(eventId);
+    if (lobby && lobby.token === token) Hub.send(ws, { type: 'lobby', data: lobby.snapshot });
+    else ws.close(4404, 'not_found');
+  }
+
+  /**
+   * Sends the lobby payload to displays on the current link and disconnects any on a link that
+   * was revoked or replaced. Runs right away (not on the next tick) after a revoke.
+   */
+  broadcastLobbies(eventId: string): void {
+    const lobbies = this.lobbies.get(eventId);
+    if (!lobbies?.size) return;
+    const lobby = this.service.lobbyForEvent(eventId);
+    for (const [ws, token] of lobbies) {
+      if (lobby && lobby.token === token) Hub.send(ws, { type: 'lobby', data: lobby.snapshot });
+      else ws.close(4404, 'not_found');
+    }
+  }
+
   /** Coalesces several changes in the same tick into one broadcast. */
   schedule(eventId: string): void {
     if (this.scheduled.has(eventId)) return;
@@ -89,6 +118,7 @@ export class Hub {
         else ws.close(4404, 'not_found');
       }
     }
+    this.broadcastLobbies(eventId);
   }
 
   private pingAll(): void {
@@ -98,7 +128,7 @@ export class Hub {
         else ws.close(4401, 'signed_out'); // the 12 h session expired
       }
     }
-    for (const map of this.guests.values())
+    for (const map of [...this.guests.values(), ...this.lobbies.values()])
       for (const ws of map.keys()) Hub.send(ws, { type: 'ping' });
   }
 

@@ -197,6 +197,44 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
     return service.guestArrive(req.params.token);
   });
 
+  /**
+   * G5 lobby display. Unknown tokens count toward the same per-IP miss limit as status tokens
+   * and join codes; each real link gets 60 requests a minute of its own.
+   */
+  const lobbyGuard = (ip: string, token: string) => {
+    const tooMany = () =>
+      new ServiceError(429, 'rate_limited', 'Too many requests. Try again in a minute.');
+    const now = service.now();
+    if (limits.status.retryAfter(ip, now) > 0) throw tooMany();
+    const event = service.lobbyEvent(token);
+    if (!event) {
+      limits.status.hit(ip, now);
+      throw new ServiceError(404, 'not_found', 'Not found.');
+    }
+    if (!limits.statusToken.hit(`lobby:${event.id}`, now)) throw tooMany();
+    return event;
+  };
+
+  app.get<{ Params: { token: string } }>('/api/lobby/:token', async (req, reply) => {
+    lobbyGuard(req.ip, req.params.token);
+    const snap = service.lobbySnapshot(req.params.token);
+    if (!snap) throw new ServiceError(404, 'not_found', 'Not found.');
+    return reply.header('Cache-Control', 'no-store').send(snap);
+  });
+
+  app.get<{ Params: { token: string } }>('/ws/lobby/:token', { websocket: true }, (socket, req) => {
+    let event;
+    try {
+      event = lobbyGuard(req.ip, req.params.token);
+    } catch (err) {
+      return socket.close(
+        err instanceof ServiceError && err.status === 429 ? 4429 : 4404,
+        'not_found',
+      );
+    }
+    ctx.hub.addLobby(event.id, socket, req.params.token);
+  });
+
   app.get<{ Params: { token: string } }>(
     '/ws/status/:token',
     { websocket: true },

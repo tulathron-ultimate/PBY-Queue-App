@@ -112,6 +112,12 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE events ADD COLUMN paused_at INTEGER;
   ALTER TABLE undo_stack ADD COLUMN event_state TEXT;
   `,
+  // 4: G5 lobby display link. Looked up by hash; NULL when the host has not made one.
+  `
+  ALTER TABLE events ADD COLUMN lobby_token TEXT;
+  ALTER TABLE events ADD COLUMN lobby_token_hash TEXT;
+  CREATE UNIQUE INDEX events_lobby_token_hash ON events(lobby_token_hash);
+  `,
 ];
 
 export function openDb(path: string): DB {

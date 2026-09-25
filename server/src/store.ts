@@ -36,6 +36,9 @@ export interface EventRecord {
   paused: boolean;
   pauseMessage: string | null;
   pausedAt: number | null;
+  /** G5 lobby display link token and its SHA-256 (lookups use the hash). */
+  lobbyToken: string | null;
+  lobbyTokenHash: string | null;
 }
 
 export interface PartyRecord extends QueueParty {
@@ -92,6 +95,8 @@ function toEvent(r: any): EventRecord {
     paused: !!r.paused,
     pauseMessage: r.pause_message ?? null,
     pausedAt: r.paused_at ?? null,
+    lobbyToken: r.lobby_token ?? null,
+    lobbyTokenHash: r.lobby_token_hash ?? null,
   };
 }
 
@@ -150,6 +155,11 @@ export class Store {
     return r ? toEvent(r) : null;
   }
 
+  getEventByLobbyHash(hash: string): EventRecord | null {
+    const r = this.db.prepare('SELECT * FROM events WHERE lobby_token_hash = ?').get(hash);
+    return r ? toEvent(r) : null;
+  }
+
   insertEvent(e: EventRecord): void {
     this.db
       .prepare(
@@ -190,6 +200,8 @@ export class Store {
       paused: 'paused',
       pauseMessage: 'pause_message',
       pausedAt: 'paused_at',
+      lobbyToken: 'lobby_token',
+      lobbyTokenHash: 'lobby_token_hash',
     };
     const sets: string[] = [];
     const values: unknown[] = [];

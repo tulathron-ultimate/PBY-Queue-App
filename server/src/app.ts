@@ -48,9 +48,16 @@ export interface BuildOptions {
   timers?: boolean;
 }
 
-/** Hides status tokens from request logs; phone numbers never reach the logs unmasked. */
-function redactUrl(url: string): string {
-  return maskPhonesInText(url.replace(/\/(s|status)\/[A-Za-z0-9]+/g, '/$1/***'));
+/**
+ * Hides status and lobby display tokens from request logs; phone numbers never reach the logs
+ * unmasked.
+ */
+export function redactUrl(url: string): string {
+  return maskPhonesInText(
+    url
+      .replace(/\/(s|status)\/[A-Za-z0-9]+/g, '/$1/***')
+      .replace(/\/(d|lobby)\/[A-Za-z0-9_-]+/g, '/$1/***'),
+  );
 }
 
 export async function buildApp(

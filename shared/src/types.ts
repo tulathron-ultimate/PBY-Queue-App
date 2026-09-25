@@ -98,6 +98,8 @@ export interface HostEventInfo extends EventSettings {
   /** Optional short note shown to guests while paused, e.g. "Back in 10 minutes". */
   pauseMessage: string | null;
   pausedAt: number | null;
+  /** G5: the read-only TV display link, or null when the host has not made one (or revoked it). */
+  lobbyUrl: string | null;
 }
 
 export interface HostSnapshot {
@@ -145,6 +147,30 @@ export interface GuestSnapshot {
   serverTime: number;
 }
 
+/** A party on the lobby display: ticket and privacy-filtered name ("Emma R."), nothing else. */
+export interface LobbyPartyRef {
+  ticket: number;
+  /** Null when the host hides names from guests (ticket numbers only). */
+  name: string | null;
+}
+
+/**
+ * G5 lobby / TV display. Built from an allowlist: it shows no more than a guest status page
+ * does (no phone numbers, party ids, status tokens, notes, members or sizes).
+ */
+export interface LobbySnapshot {
+  eventName: string;
+  eventEnded: boolean;
+  paused: boolean;
+  pauseMessage: string | null;
+  nowServing: LobbyPartyRef | null;
+  /** The next parties Call next will take, in order (at most `DEFAULTS.lobbyComingUp`). */
+  comingUp: LobbyPartyRef[];
+  /** Self-join link and its QR code, or null when joining is off or the event ended. */
+  joinUrl: string | null;
+  joinQrUrl: string | null;
+}
+
 export interface JoinInfo {
   eventName: string;
   open: boolean;
@@ -155,4 +181,7 @@ export interface JoinInfo {
 }
 
 export type WsMessage =
-  { type: 'host'; data: HostSnapshot } | { type: 'guest'; data: GuestSnapshot } | { type: 'ping' };
+  | { type: 'host'; data: HostSnapshot }
+  | { type: 'guest'; data: GuestSnapshot }
+  | { type: 'lobby'; data: LobbySnapshot }
+  | { type: 'ping' };

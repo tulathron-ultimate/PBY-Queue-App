@@ -1,5 +1,6 @@
 /** Builds the payloads sent to host and guest pages. Guest payloads are privacy-filtered. */
 import {
+  DEFAULTS,
   findNowServing,
   orderActive,
   positionOf,
@@ -13,10 +14,13 @@ import {
   type HostPartyText,
   type HostSnapshot,
   type JoinInfo,
+  type LobbyPartyRef,
+  type LobbySnapshot,
   type PendingText,
   type TemplateKey,
   LIMITS,
 } from '@pby/shared';
+import { lobbyUrl } from './lobby.js';
 import type { EventRecord, PartyRecord, SmsLogRecord } from './store.js';
 
 export function statusLink(event: EventRecord, party: PartyRecord): string {
@@ -57,6 +61,7 @@ export function hostEventInfo(event: EventRecord): HostEventInfo {
     paused: event.paused,
     pauseMessage: event.pauseMessage,
     pausedAt: event.pausedAt,
+    lobbyUrl: event.lobbyToken ? lobbyUrl(event.publicUrl, event.lobbyToken) : null,
   };
 }
 
@@ -173,6 +178,39 @@ export function buildGuestSnapshot(
     },
     nowServing: serving ? ref(event, serving, party.id) : null,
     comingUp,
+  };
+}
+
+function lobbyRef(event: EventRecord, p: PartyRecord): LobbyPartyRef {
+  return { ticket: p.ticket, name: publicName(p.name, event.showNames) };
+}
+
+/**
+ * G5 lobby display payload, built field by field from an allowlist: the event name, the pause
+ * state and message, tickets with privacy-filtered names (G2), and the public join link. It
+ * never carries phone numbers, party ids, status tokens, notes, members or party sizes.
+ */
+export function buildLobbySnapshot(
+  event: EventRecord,
+  parties: readonly PartyRecord[],
+): LobbySnapshot {
+  const ended = event.status === 'closed';
+  const serving = ended ? undefined : findNowServing(parties);
+  const joinOpen = event.selfJoin && !ended;
+  return {
+    eventName: event.name,
+    eventEnded: ended,
+    paused: event.paused && !ended,
+    pauseMessage: event.paused && !ended ? event.pauseMessage : null,
+    nowServing: serving ? lobbyRef(event, serving) : null,
+    comingUp: ended
+      ? []
+      : orderActive(parties)
+          .filter((p) => p.arrived)
+          .slice(0, DEFAULTS.lobbyComingUp)
+          .map((p) => lobbyRef(event, p)),
+    joinUrl: joinOpen ? joinLink(event) : null,
+    joinQrUrl: joinOpen ? `/api/join/${event.code}/qr.svg` : null,
   };
 }
 
