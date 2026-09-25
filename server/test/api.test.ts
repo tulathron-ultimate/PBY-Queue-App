@@ -402,6 +402,25 @@ describe('queue flow (tap-to-send)', () => {
     expect(joinText.body).not.toMatch(/min|~/);
   });
 
+  it('limits join-code guessing with the same per-IP miss limit as status tokens (QA #16)', async () => {
+    const h = await setup();
+    const get = (path: string, ip = '203.0.113.9') =>
+      h.app.inject({ method: 'GET', url: path, headers: { 'x-forwarded-for': ip } });
+    expect((await get(`/api/join/${h.code}`)).statusCode).toBe(200);
+    // 30 wrong join codes plus 30 wrong status tokens share one budget of 60 misses a minute.
+    const misses: number[] = [];
+    for (let i = 0; i < 30; i++) misses.push((await get(`/api/join/ZZZZ${10 + i}`)).statusCode);
+    for (let i = 0; i < 30; i++)
+      misses.push((await get(`/api/status/AAAAAAAAA${100 + i}`)).statusCode);
+    expect(misses.every((c) => c === 404)).toBe(true);
+    // Now that address is cut off, even for a real code, while other addresses are fine.
+    expect((await get('/api/join/ZZZZZZ')).statusCode).toBe(429);
+    expect((await get(`/api/join/${h.code}`)).statusCode).toBe(429);
+    expect((await get(`/api/join/${h.code}`, '198.51.100.3')).statusCode).toBe(200);
+    advance(60_001);
+    expect((await get(`/api/join/${h.code}`)).statusCode).toBe(200);
+  });
+
   it('returns a generic 404 for unknown status tokens', async () => {
     const h = await setup();
     const r = await h.app.inject({ method: 'GET', url: '/api/status/AAAAAAAAAAAA' });

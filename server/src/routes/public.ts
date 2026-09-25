@@ -121,9 +121,17 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   /* ------------------------------------------------------------ guests */
 
+  /** Join page info. Unknown codes count toward the same per-IP miss limit as status tokens. */
   app.get<{ Params: { code: string } }>('/api/join/:code', async (req) => {
+    const now = service.now();
+    if (limits.status.retryAfter(req.ip, now) > 0) {
+      throw new ServiceError(429, 'rate_limited', 'Too many requests. Try again in a minute.');
+    }
     const info = service.joinInfo(req.params.code);
-    if (!info) throw new ServiceError(404, 'not_found', 'Not found.');
+    if (!info) {
+      limits.status.hit(req.ip, now);
+      throw new ServiceError(404, 'not_found', 'Not found.');
+    }
     return info;
   });
 
@@ -158,7 +166,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
   });
 
   /**
-   * §2.10 status limit, keyed so that a venue's shared Wi-Fi or carrier NAT address doesn't lock
+   * §2.10 status limit (the miss counter is shared with join codes), keyed so that a venue's shared Wi-Fi or carrier NAT address doesn't lock
    * out every family on it: unknown tokens count per IP (60 misses a minute stops guessing, and
    * then that IP gets 429 for every token, so it can't keep probing), and each real link gets
    * 60 requests a minute of its own.

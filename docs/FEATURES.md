@@ -188,7 +188,7 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 | Item | Default |
 |------|---------|
 | Status link token | **12 chars base62** from a CSPRNG (~71 bits). URL `https://{host}/s/{token}`. Keep `{host}` ≤25 chars so `{link}` stays ≤45. |
-| Event join code (QR) | 6 chars from base32 without ambiguous characters. URL `/j/{code}` |
+| Event join code (QR) | 6 chars from base32 without ambiguous characters. URL `/j/{code}`. Unknown codes on `GET /api/join/{code}` count toward the same per-IP miss limit as unknown status tokens (QA #16). |
 | Host PIN | **6 digits** minimum (up to 12 chars, digits or letters). Stored as a scrypt or argon2 hash, never in plain text. |
 | PIN brute force | 5 failures per IP per minute causes a 60 s block. **20 failures per (event, IP) per hour lock that event for that IP for 15 min**, so a stranger holding the public join code only locks themselves out. Backstop: **200 failures per event per hour** from all addresses together lock the event for everyone for 15 min. (Was 20 per event; changed by owner decision after QA #14.) |
 | Host session | An HttpOnly, Secure, SameSite=Lax cookie, valid for 12 h and cleared when the event closes. |
