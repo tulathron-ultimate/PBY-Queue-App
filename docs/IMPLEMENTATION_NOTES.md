@@ -115,6 +115,6 @@ templates and rules), then `DESIGN.md`, and otherwise the simplest reasonable op
   drag-and-drop reorder, delivery status, one-off custom texts, leave line / change party size on
   the guest page, lobby/TV display, multi-language, Web Push, offline queueing of host actions
   (the dashboard shows an offline banner; actions need a connection), and the Capacitor wrap.
-- The queue list uses `content-visibility: auto` rather than a virtualization library; 300–500
-  rows render smoothly on a mid-range phone.
+- The queue list uses `content-visibility: auto` rather than a virtualization library, which keeps
+  300–500 simple rows cheap to render. It has not been profiled on a low-end phone yet.
 - The guest pages are part of the SPA rather than a server-rendered shell.
