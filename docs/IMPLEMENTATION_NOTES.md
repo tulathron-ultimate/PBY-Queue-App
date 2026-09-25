@@ -63,8 +63,9 @@ templates and rules), then `DESIGN.md`, and otherwise the simplest reasonable op
   requests.
 - **Tap-to-send** marks a text sent when the page becomes visible again after Messages opened
   (optimistic; "Didn't send? Put it back" reverts). On a desktop, where the page never hides, an
-  "I sent it" button does the same. The message body is rendered when the tray is shown and never
-  stored.
+  "I sent it" button does the same. The message body is rendered on the host device when the tray is
+  shown, with the same shared template code the server uses for Twilio (`renderPartyText`), and
+  never stored. Host snapshots carry only the template key, so they stay small with a full tray.
 - **Twilio** sends from the server with plain `fetch`. International numbers are not texted in
   Twilio mode (§2.9 allows them only in tap-to-send). The STOP footer goes on the first Twilio
   message to a number in an event, tracked through the SMS log. Delivery status callbacks (S5) are

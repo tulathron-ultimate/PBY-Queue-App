@@ -4,8 +4,8 @@ import {
   orderActive,
   positionOf,
   publicName,
-  renderSms,
-  smsEventName,
+  renderPartyText,
+  statusUrl,
   type GuestPartyRef,
   type GuestSnapshot,
   type HostEventInfo,
@@ -20,7 +20,7 @@ import {
 import type { EventRecord, PartyRecord, SmsLogRecord } from './store.js';
 
 export function statusLink(event: EventRecord, party: PartyRecord): string {
-  return `${event.publicUrl}/s/${party.token}`;
+  return statusUrl(event.publicUrl, party.token);
 }
 
 export function joinLink(event: EventRecord): string {
@@ -34,18 +34,7 @@ export function renderBody(
   template: TemplateKey,
   stopFooter: boolean,
 ): string {
-  const pos = positionOf(parties, party.id);
-  return renderSms(
-    template,
-    {
-      event: smsEventName(event.name, event.smsName),
-      name: party.name,
-      pos: pos ?? '',
-      ticket: party.ticket,
-      link: statusLink(event, party),
-    },
-    { stopFooter },
-  );
+  return renderPartyText(event, parties, party, template, { stopFooter });
 }
 
 export function hostEventInfo(event: EventRecord): HostEventInfo {
@@ -61,6 +50,7 @@ export function hostEventInfo(event: EventRecord): HostEventInfo {
     showNames: event.showNames,
     status: event.status,
     joinUrl: joinLink(event),
+    publicUrl: event.publicUrl,
     hostConsent: event.hostConsent,
     createdAt: event.createdAt,
     closedAt: event.closedAt,
@@ -122,7 +112,6 @@ export function buildHostSnapshot(input: HostSnapshotInput): HostSnapshot {
       partyId: s.partyId,
       template: s.template,
       to: party.phone,
-      body: renderBody(event, parties, party, s.template, false),
       createdAt: s.createdAt,
     });
   }

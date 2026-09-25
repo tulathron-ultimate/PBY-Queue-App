@@ -68,9 +68,8 @@ export interface PendingText {
   id: number;
   partyId: string;
   template: TemplateKey;
-  /** E.164 recipient. */
+  /** E.164 recipient. The body is rendered on the device with `renderPartyText`. */
   to: string;
-  body: string;
   createdAt: number;
 }
 
@@ -89,6 +88,8 @@ export interface HostEventInfo extends EventSettings {
   code: string;
   status: EventStatus;
   joinUrl: string;
+  /** Base of texted status links, so host devices can render tray texts themselves. */
+  publicUrl: string;
   hostConsent: boolean;
   createdAt: number;
   closedAt: number | null;

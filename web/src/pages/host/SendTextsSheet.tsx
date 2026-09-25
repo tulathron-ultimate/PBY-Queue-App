@@ -5,6 +5,7 @@ import { Sheet } from '../../components/ui';
 import { Icon } from '../../icons';
 import { openSms } from '../../platform/sms';
 import type { HostContext } from './HostEvent';
+import { trayBody } from './trayText';
 
 const BADGE: Record<TemplateKey, string> = {
   your_turn: 'b-now_serving',
@@ -80,7 +81,7 @@ export function SendTextsSheet({
   const send = (msg: PendingText) => {
     awaitingRef.current = msg.id;
     setAwaiting(msg.id);
-    openSms(msg.to, msg.body);
+    openSms(msg.to, trayBody(snap, msg));
   };
 
   const lastSent = sent[sent.length - 1];
@@ -116,7 +117,7 @@ export function SendTextsSheet({
             <div className="help" style={{ marginTop: 2 }}>
               {formatPhone(current.to)}
             </div>
-            <div className="preview">{current.body}</div>
+            <div className="preview">{trayBody(snap, current)}</div>
           </div>
           {awaiting === current.id ? (
             <div className="stack">

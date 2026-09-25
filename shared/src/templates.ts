@@ -1,5 +1,6 @@
 /** SMS templates and rendering (FEATURES §2.4). GSM-7 only, ≤160 chars rendered. */
-import type { TemplateKey } from './types.js';
+import { positionOf } from './queue.js';
+import type { QueueParty, TemplateKey } from './types.js';
 
 export const TEMPLATES: Readonly<Record<TemplateKey, string>> = {
   join: "{event}: {name}, you're #{pos} in line. Track live: {link}",
@@ -145,4 +146,41 @@ export function renderSms(
     text = fill(template, values);
   }
   return text + footer;
+}
+
+/** The event fields a party's text needs. `HostEventInfo` and the server's event record fit. */
+export interface TextEvent {
+  name: string;
+  smsName: string | null;
+  /** Base URL of texted links, e.g. `https://q.example.com`. */
+  publicUrl: string;
+}
+
+/** A party's private status page, `{publicUrl}/s/{token}`. */
+export function statusUrl(publicUrl: string, token: string): string {
+  return `${publicUrl}/s/${token}`;
+}
+
+/**
+ * Renders the text for one party as it is now. The server uses it for Twilio, and host devices
+ * use it for the tap-to-send tray, so snapshots never carry rendered bodies.
+ */
+export function renderPartyText(
+  event: TextEvent,
+  parties: readonly QueueParty[],
+  party: QueueParty & { name: string; token: string },
+  template: TemplateKey,
+  opts: { stopFooter?: boolean } = {},
+): string {
+  return renderSms(
+    template,
+    {
+      event: smsEventName(event.name, event.smsName),
+      name: party.name,
+      pos: positionOf(parties, party.id) ?? '',
+      ticket: party.ticket,
+      link: statusUrl(event.publicUrl, party.token),
+    },
+    { stopFooter: opts.stopFooter },
+  );
 }

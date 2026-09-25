@@ -1,4 +1,10 @@
-import { TEMPLATE_EXAMPLE_ROWS, TEMPLATE_HEADERS } from '@pby/shared';
+import {
+  TEMPLATE_EXAMPLE_ROWS,
+  TEMPLATE_HEADERS,
+  type HostParty,
+  type HostSnapshot,
+  type PendingText,
+} from '@pby/shared';
 import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
 import {
@@ -9,6 +15,7 @@ import {
 } from '../src/import/spreadsheet';
 import { parseImportTable } from '@pby/shared';
 import { aheadText } from '../src/pages/guest/statusText';
+import { trayBody } from '../src/pages/host/trayText';
 import { isIos, smsUri } from '../src/platform/sms';
 
 describe('sms adapter (S2)', () => {
@@ -100,5 +107,41 @@ describe('guest status lines (G2)', () => {
     expect(aheadText(0)).toBeNull();
     expect(aheadText(null)).toBeNull();
     for (const p of [1, 5, 90, 300]) expect(aheadText(p)).not.toMatch(/min|wait|~/i);
+  });
+});
+
+describe('tap-to-send tray (QA #17)', () => {
+  it('renders the text on the device from the snapshot', () => {
+    const party = (id: string, ticket: number, state: HostParty['state'], name: string) =>
+      ({
+        id,
+        ticket,
+        state,
+        sortKey: ticket,
+        arrived: true,
+        skipCount: 0,
+        upNextSent: false,
+        calledAt: null,
+        doneAt: null,
+        name,
+        token: `tok${ticket}xxxxxxxx`,
+      }) as HostParty;
+    const snap = {
+      event: { name: 'Pumpkin Patch Portraits', smsName: null, publicUrl: 'https://q.example.com' },
+      parties: [
+        party('a', 1, 'now_serving', 'Garcia Family'),
+        party('b', 2, 'up_next', 'Nguyen Family'),
+        party('c', 3, 'waiting', 'Émile Smith'),
+      ],
+    } as unknown as HostSnapshot;
+    const text = (partyId: string, template: PendingText['template']) =>
+      trayBody(snap, { id: 1, partyId, template, to: '+15552018830', createdAt: 0 });
+    expect(text('c', 'join')).toBe(
+      "Pumpkin Patch Portra: Emile, you're #2 in line. Track live: https://q.example.com/s/tok3xxxxxxxx",
+    );
+    expect(text('a', 'your_turn')).toBe(
+      "Pumpkin Patch Portra: Garcia, it's your turn! Please come to the camera now.",
+    );
+    expect(text('gone', 'join')).toBe('');
   });
 });

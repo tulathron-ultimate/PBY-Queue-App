@@ -1,4 +1,9 @@
-import type { GuestSnapshot, HostSnapshot } from '@pby/shared';
+import {
+  renderPartyText,
+  type GuestSnapshot,
+  type HostSnapshot,
+  type PendingText,
+} from '@pby/shared';
 import type { FastifyInstance } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -81,6 +86,12 @@ async function host(h: Harness, method: 'GET' | 'POST' | 'PATCH', path: string, 
     payload: method === 'GET' ? undefined : (payload ?? {}),
   });
   return res;
+}
+
+/** What a host device shows in the tap-to-send tray, rendered from the snapshot (QA #17). */
+function trayBody(s: HostSnapshot, t: PendingText): string {
+  const party = s.parties.find((p) => p.id === t.partyId)!;
+  return renderPartyText(s.event, s.parties, party, t.template);
 }
 
 async function snap(h: Harness): Promise<HostSnapshot> {
@@ -258,7 +269,7 @@ describe('queue flow (tap-to-send)', () => {
       ['up_next', '+15553094417'],
       ['your_turn', '+15552018830'],
     ]);
-    expect(s.pendingTexts[1].body).toBe(
+    expect(trayBody(s, s.pendingTexts[1])).toBe(
       "Pumpkin Patch Portra: Emma, it's your turn! Please come to the camera now.",
     );
 
@@ -398,9 +409,12 @@ describe('queue flow (tap-to-send)', () => {
     for (const body of [guest.body, join.body, JSON.stringify(s)]) {
       expect(body).not.toMatch(/wait(Text|Minutes)|avgMinutes|minutesPerParty|\bmin\b|minute/i);
     }
-    const joinText = s.pendingTexts.find((t) => t.template === 'join')!;
-    expect(joinText.body).toMatch(/you're #\d+ in line\. Track live: https:/);
-    expect(joinText.body).not.toMatch(/min|~/);
+    const joinText = trayBody(
+      s,
+      s.pendingTexts.find((t) => t.template === 'join')!,
+    );
+    expect(joinText).toMatch(/you're #\d+ in line\. Track live: https:/);
+    expect(joinText).not.toMatch(/min|~/);
   });
 
   it('limits join-code guessing with the same per-IP miss limit as status tokens (QA #16)', async () => {
@@ -495,6 +509,57 @@ describe('twilio mode', () => {
       payload: new URLSearchParams(start).toString(),
     });
     expect((await snap(h)).parties.find((p) => p.id === emma.id)!.optedOut).toBe(false);
+  });
+});
+
+describe('host snapshots carry no rendered texts (QA #17)', () => {
+  it('leaves bodies out of the tray; the device renders the same text the server would', async () => {
+    const h = await setup();
+    const rows = Array.from({ length: 300 }, (_, i) => ({
+      name: `Family ${i + 1}`,
+      phone: `555${String(2000000 + i).padStart(7, '0')}`,
+    }));
+    await host(h, 'POST', '/import', {
+      rows,
+      arrived: true,
+      consentConfirmed: true,
+      sendJoinTexts: true,
+    });
+    const res = await host(h, 'GET', '');
+    const s: HostSnapshot = res.json();
+    expect(s.pendingTexts.length).toBeGreaterThan(290);
+    for (const t of s.pendingTexts) expect(t).not.toHaveProperty('body');
+    expect(res.body).not.toContain('Track live');
+    // The same snapshot with rendered bodies (as it used to be sent) is much larger.
+    const withBodies = JSON.stringify({
+      ...s,
+      pendingTexts: s.pendingTexts.map((t) => ({ ...t, body: trayBody(s, t) })),
+    });
+    expect(res.body.length).toBeLessThan(withBodies.length * 0.85);
+    expect(s.event.publicUrl).toBe('https://q.example.com');
+    const last = s.pendingTexts.at(-1)!;
+    const party = s.parties.find((p) => p.id === last.partyId)!;
+    expect(trayBody(s, last)).toBe(
+      `Pumpkin Patch Portra: Family, you're #300 in line. Track live: https://q.example.com/s/${party.token}`,
+    );
+  });
+
+  it('matches what Twilio sends, byte for byte', async () => {
+    const h = await setup({
+      TWILIO_ACCOUNT_SID: 'AC123',
+      TWILIO_AUTH_TOKEN: 'secret-token',
+      TWILIO_FROM: '+15550001111',
+    });
+    await addManual(h, 'Garcia Family', '555-201-8830');
+    await addManual(h, 'Nguyen Family', '555-309-4417');
+    await addManual(h, 'Smith Family', '555-740-1122');
+    await h.ctx.service.pendingDispatch;
+    const s = await snap(h);
+    const smith = s.parties.find((p) => p.name === 'Smith Family')!;
+    const sent = h.sent.find((m) => m.to === smith.phone)!;
+    expect(sent.body).toBe(
+      renderPartyText(s.event, s.parties, smith, 'join', { stopFooter: true }),
+    );
   });
 });
 
