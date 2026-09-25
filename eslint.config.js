@@ -11,6 +11,7 @@ export default tseslint.config(
       '**/dev-dist/**',
       '**/node_modules/**',
       'docs/**',
+      '.claude/**',
       'test-results/**',
       'playwright-report/**',
     ],

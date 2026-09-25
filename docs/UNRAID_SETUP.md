@@ -11,12 +11,12 @@ Guest phone ──HTTPS──► Cloudflare ──tunnel──► cloudflared co
 
 ## 0. What you need
 
-| Item | Notes |
-|---|---|
-| Unraid 6.12+ with Docker enabled | Settings → Docker → Enable Docker: Yes |
-| A domain on Cloudflare | e.g. `photosbyyaz.com`. If the domain's DNS is elsewhere (Squarespace, GoDaddy…), either move DNS to Cloudflare (free plan) or buy a cheap short domain just for the queue. |
-| A Cloudflare Zero Trust account | Free plan is fine (Zero Trust dashboard → pick the Free plan). |
-| A short hostname | Keep it ≤ 25 characters (e.g. `q.photosbyyaz.com`) so texted links fit in one SMS. |
+| Item                             | Notes                                                                                                                                                                       |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unraid 6.12+ with Docker enabled | Settings → Docker → Enable Docker: Yes                                                                                                                                      |
+| A domain on Cloudflare           | e.g. `photosbyyaz.com`. If the domain's DNS is elsewhere (Squarespace, GoDaddy…), either move DNS to Cloudflare (free plan) or buy a cheap short domain just for the queue. |
+| A Cloudflare Zero Trust account  | Free plan is fine (Zero Trust dashboard → pick the Free plan).                                                                                                              |
+| A short hostname                 | Keep it ≤ 25 characters (e.g. `q.photosbyyaz.com`) so texted links fit in one SMS.                                                                                          |
 
 ## 1. Build the image on Unraid
 
@@ -48,27 +48,27 @@ openssl rand -base64 24
 
 **Docker tab → Add Container**, switch to **Advanced View** (top right), and fill in:
 
-| Field | Value |
-|---|---|
-| Name | `pby-queue` |
-| Repository | `pby-queue:latest` |
-| Network Type | `Bridge` |
-| WebUI | `http://[IP]:[PORT:3000]/host` |
-| Icon URL | *(optional)* |
+| Field        | Value                          |
+| ------------ | ------------------------------ |
+| Name         | `pby-queue`                    |
+| Repository   | `pby-queue:latest`             |
+| Network Type | `Bridge`                       |
+| WebUI        | `http://[IP]:[PORT:3000]/host` |
+| Icon URL     | _(optional)_                   |
 
 Then use **Add another Path, Port, Variable…** for each row:
 
-| Config type | Name | Container value | Host value / Value |
-|---|---|---|---|
-| Port | Web | `3000` | `3000` (any free port; see step 3 about exposure) |
-| Path | Data | `/data` | `/mnt/user/appdata/pby-queue` |
-| Variable | ADMIN_PASSWORD | — | *(the password from step 1; set Display: Masked)* |
-| Variable | PUBLIC_URL | — | `https://q.photosbyyaz.com` |
-| Variable | TRUST_PROXY | — | `1` |
-| Variable | TZ | — | `America/Chicago` (your zone; affects log times only) |
-| Variable | TWILIO_ACCOUNT_SID | — | *(leave blank until Twilio is verified)* |
-| Variable | TWILIO_AUTH_TOKEN | — | *(blank for now; Masked)* |
-| Variable | TWILIO_FROM | — | *(blank for now, later `+18885551234`)* |
+| Config type | Name               | Container value | Host value / Value                                    |
+| ----------- | ------------------ | --------------- | ----------------------------------------------------- |
+| Port        | Web                | `3000`          | `3000` (any free port; see step 3 about exposure)     |
+| Path        | Data               | `/data`         | `/mnt/user/appdata/pby-queue`                         |
+| Variable    | ADMIN_PASSWORD     | —               | _(the password from step 1; set Display: Masked)_     |
+| Variable    | PUBLIC_URL         | —               | `https://q.photosbyyaz.com`                           |
+| Variable    | TRUST_PROXY        | —               | `1`                                                   |
+| Variable    | TZ                 | —               | `America/Chicago` (your zone; affects log times only) |
+| Variable    | TWILIO_ACCOUNT_SID | —               | _(leave blank until Twilio is verified)_              |
+| Variable    | TWILIO_AUTH_TOKEN  | —               | _(blank for now; Masked)_                             |
+| Variable    | TWILIO_FROM        | —               | _(blank for now, later `+18885551234`)_               |
 
 Click **Apply**. The container should show **started** and, after ~30 s, **healthy**.
 
@@ -92,18 +92,18 @@ Invoke-RestMethod -Uri 'http://192.168.1.50:3000/healthz'   # → ok : True
    (the part after `--token`). You don't run that command yourself.
 4. In Unraid: **Apps** (Community Apps) → search **cloudflared** → install the official-image
    template, paste the token into the **TUNNEL_TOKEN** field, Apply.
-   *No template?* Docker → Add Container: Repository `cloudflare/cloudflared:latest`,
+   _No template?_ Docker → Add Container: Repository `cloudflare/cloudflared:latest`,
    Network `Bridge`, Post Arguments `tunnel --no-autoupdate run --token <TOKEN>`.
 5. Back in Cloudflare the tunnel shows **Healthy**. Click **Next** / **Public Hostname** →
    **Add a public hostname**:
 
-   | Field | Value |
-   |---|---|
-   | Subdomain | `q` |
-   | Domain | `photosbyyaz.com` |
-   | Path | *(blank)* |
-   | Service type | `HTTP` |
-   | URL | `<UNRAID_IP>:3000` (e.g. `192.168.1.50:3000`) |
+   | Field        | Value                                         |
+   | ------------ | --------------------------------------------- |
+   | Subdomain    | `q`                                           |
+   | Domain       | `photosbyyaz.com`                             |
+   | Path         | _(blank)_                                     |
+   | Service type | `HTTP`                                        |
+   | URL          | `<UNRAID_IP>:3000` (e.g. `192.168.1.50:3000`) |
 
    Save. WebSockets (live updates) work through tunnels automatically.
 
@@ -137,7 +137,7 @@ Once toll-free verification is approved:
 
 1. Edit the `pby-queue` container and fill `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`
    (masked) and `TWILIO_FROM` (`+1888…`). Apply (the container restarts; queue data is kept).
-2. In the Twilio console → your number → **Messaging configuration** → *A message comes in*:
+2. In the Twilio console → your number → **Messaging configuration** → _A message comes in_:
    **Webhook**, `https://q.photosbyyaz.com/sms/twilio/inbound`, **HTTP POST**. This is what
    handles STOP/START replies.
 3. In the app, open an event's **Settings → Texting** and choose **Automatic (Twilio)**.
@@ -163,15 +163,15 @@ the results CSV for photo ordering before the purge.
 
 ## 8. Troubleshooting
 
-| Symptom | Fix |
-|---|---|
-| Container stops right after start, log says permission denied on `/data` | `chown 1000:1000 /mnt/user/appdata/pby-queue`, or add Extra Parameters `--user 99:100` and `chown 99:100` the folder. |
-| "Creating events is disabled" | `ADMIN_PASSWORD` is empty or still the example placeholder. Set a real value and restart. |
-| Guest page loads but never updates | Something between phone and app is blocking WebSockets: check that the Cloudflare hostname points at the tunnel (not a proxy/redirect rule), and that no browser extension/VPN interferes. |
-| Tunnel shows **Down** | Check the cloudflared container log; re-paste the token; confirm Unraid has internet access. |
-| Cloudflare error 502 | The public hostname URL is wrong (IP/port), or pby-queue isn't running. `curl http://<UNRAID_IP>:3000/healthz` from the Unraid terminal. |
-| Logged-in host gets logged out on every refresh | You're using plain `http://` to the LAN IP. Use the `https://q.…` address (the session cookie is Secure over HTTPS). |
-| Texted links are long / split into two SMS | Shorten the hostname in `PUBLIC_URL` (≤ 25 characters). |
-| Twilio STOP replies not handled | Webhook URL must exactly match `PUBLIC_URL` + `/sms/twilio/inbound` (signature check uses it). |
+| Symptom                                                                  | Fix                                                                                                                                                                                        |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Container stops right after start, log says permission denied on `/data` | `chown 1000:1000 /mnt/user/appdata/pby-queue`, or add Extra Parameters `--user 99:100` and `chown 99:100` the folder.                                                                      |
+| "Creating events is disabled"                                            | `ADMIN_PASSWORD` is empty or still the example placeholder. Set a real value and restart.                                                                                                  |
+| Guest page loads but never updates                                       | Something between phone and app is blocking WebSockets: check that the Cloudflare hostname points at the tunnel (not a proxy/redirect rule), and that no browser extension/VPN interferes. |
+| Tunnel shows **Down**                                                    | Check the cloudflared container log; re-paste the token; confirm Unraid has internet access.                                                                                               |
+| Cloudflare error 502                                                     | The public hostname URL is wrong (IP/port), or pby-queue isn't running. `curl http://<UNRAID_IP>:3000/healthz` from the Unraid terminal.                                                   |
+| Logged-in host gets logged out on every refresh                          | You're using plain `http://` to the LAN IP. Use the `https://q.…` address (the session cookie is Secure over HTTPS).                                                                       |
+| Texted links are long / split into two SMS                               | Shorten the hostname in `PUBLIC_URL` (≤ 25 characters).                                                                                                                                    |
+| Twilio STOP replies not handled                                          | Webhook URL must exactly match `PUBLIC_URL` + `/sms/twilio/inbound` (signature check uses it).                                                                                             |
 
 Logs: Docker tab → click the `pby-queue` icon → **Logs**. Phone numbers are masked in logs.

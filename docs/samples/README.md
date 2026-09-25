@@ -7,7 +7,7 @@ app end to end: families, seniors, teams of 12–16, couples, and one walk-in wi
 - Phone numbers use the 555-01xx range, which is reserved for fiction and never reaches a real
   person. Tap-to-send will open Messages, but don't press Send.
 - The first row starts with "Example", so the importer skips it on purpose.
-- "Walk-in: no phone" shows the importer's *No phone, can't be texted* warning.
+- "Walk-in: no phone" shows the importer's _No phone, can't be texted_ warning.
 
 Practice run: create an event, **Add people → Excel / CSV**, pick this file, check in a few
 parties, and **Call next** while watching a guest link on a second phone.
