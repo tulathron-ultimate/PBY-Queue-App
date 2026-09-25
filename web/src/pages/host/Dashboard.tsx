@@ -14,6 +14,7 @@ import { haptics } from '../../platform/haptics';
 import { useWakeLock } from '../../platform/wakeLock';
 import { navigate } from '../../router';
 import { AddPeopleSheet } from './AddPeopleSheet';
+import { callNextEmptyLabel } from './callNextLabel';
 import type { HostContext } from './HostEvent';
 import { ImportReview } from './ImportReview';
 import { PartyEditor } from './PartyEditor';
@@ -573,7 +574,7 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
                   </>
                 ) : (
                   <span className="big" style={{ fontSize: 'var(--fs-lg)' }}>
-                    {active.length ? 'Nobody checked in' : 'Line is empty'}
+                    {callNextEmptyLabel(active.length, false)}
                   </span>
                 )}
               </button>

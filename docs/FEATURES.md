@@ -134,7 +134,7 @@ Rules:
 1. The current `now_serving` party becomes `done` (with its timestamp recorded).
 2. The first party by `sort_key` among `up_next`/`waiting` becomes `now_serving`, which triggers `your_turn`.
 3. Up next is recomputed (§2.2).
-4. If the queue is empty, the button shows "Queue empty" and is disabled.
+4. If nobody can be called, the button is disabled and says **"Line is empty"** when no one is waiting, or **"Nobody checked in"** when everyone waiting is not here yet (A8). (Aligned with the UI and DESIGN H3 after QA; this replaces "Queue empty".)
 
 ### 2.6 Skip / no-show policy
 

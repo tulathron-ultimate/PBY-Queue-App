@@ -242,7 +242,7 @@ Layout, top to bottom (390px wide phone):
 7. **Bottom action bar** (sticky, elevated, safe-area aware):
    - Left: **+ Add** square button (80×80, surface-2, icon + "Add").
    - Right: **Call next** (80px tall, flexible width, `--primary`, fs-2xl weight 800, "Call next ▸"). Sub-label inside the button: "Garcia Family · #15" so she knows who is coming without reading the list.
-   - When the queue is empty: button disabled with label "Line is empty".
+   - When nobody can be called: button disabled with label "Line is empty" (no one waiting) or "Nobody checked in" (everyone waiting is not here yet). Same wording as FEATURES §2.5.
    - When paused: button reads "Resume line".
 
 **Queue row (64px)**: left 6px status bar · ticket badge (`#15`, 44px wide, tabular) · name (fs-base 700) with size chip "👥 4" rendered as a users icon + number · second line: status label + "texted 2m ago" or phone last-4 · right: **message icon button** (48×48; filled dot when not yet texted for current status) · whole row tappable → H4.
@@ -364,7 +364,7 @@ Top to bottom:
    - Status badge (Waiting / Up next).
 3. **Now serving** card: "Now taking photos of" + ticket badge `#14` in `--fs-display` + name "Garcia Family" (or "#14" only if names are hidden).
 4. **Coming up** mini list: next 3 tickets with names; the guest's own row highlighted with "You" tag.
-5. Help text: "Stay nearby. We'll text you when you're 2 away and when it's your turn." (If no phone: "Keep this page open — it updates by itself.")
+5. Help text: "Stay nearby. We'll text you when you're 2 away and when it's your turn." Once the guest is Up next, only: "Stay nearby. We'll text you when it's your turn." (If no phone: "Keep this page open — it updates by itself.")
 6. Footer actions (secondary, 48px text buttons): **Leave the line** (confirm), **Change party size**.
 
 **Up next state**: hero card switches to amber tint + amber bar, headline "You're up next! Head to the photo area." Position shows "Next" when position = 1 behind now-serving; vibration pulse once (if page visible). Browser tab title becomes "⚡ You're up next — PBY".

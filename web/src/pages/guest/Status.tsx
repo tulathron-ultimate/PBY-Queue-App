@@ -6,7 +6,7 @@ import { Icon } from '../../icons';
 import { useLive } from '../../live';
 import { haptics } from '../../platform/haptics';
 import { linkHandler } from '../../router';
-import { aheadText } from './statusText';
+import { aheadText, guestNote } from './statusText';
 
 /** G2 My status, G3 It's your turn, G4 terminal states. Live over WebSocket, 15 s polling fallback. */
 export function Status({ token }: { token: string }) {
@@ -246,11 +246,9 @@ export function Status({ token }: { token: string }) {
             ))}
           </div>
         )}
-        {me && (me.state === 'waiting' || me.state === 'up_next') && (
-          <p className="note">
-            {me.hasPhone
-              ? `Stay nearby. We'll text you when you're ${snap.upNextN > 0 ? `${snap.upNextN} away` : 'almost up'} and again when it's your turn.`
-              : 'Keep this page open. It updates by itself.'}
+        {guestNote(me, snap.upNextN) && (
+          <p className="note" data-testid="guest-note">
+            {guestNote(me, snap.upNextN)}
           </p>
         )}
       </div>

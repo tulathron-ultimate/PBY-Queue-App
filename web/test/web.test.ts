@@ -14,7 +14,8 @@ import {
   tableFromWorkbook,
 } from '../src/import/spreadsheet';
 import { parseImportTable } from '@pby/shared';
-import { aheadText } from '../src/pages/guest/statusText';
+import { aheadText, guestNote } from '../src/pages/guest/statusText';
+import { callNextEmptyLabel } from '../src/pages/host/callNextLabel';
 import { trayBody } from '../src/pages/host/trayText';
 import { isIos, smsUri } from '../src/platform/sms';
 
@@ -143,5 +144,26 @@ describe('tap-to-send tray (QA #17)', () => {
       "Pumpkin Patch Portra: Garcia, it's your turn! Please come to the camera now.",
     );
     expect(text('gone', 'join')).toBe('');
+  });
+});
+
+describe('QA nits', () => {
+  it('drops the "2 away" promise once the guest is already Up next', () => {
+    const me = (state: string, hasPhone = true) => ({ state, hasPhone });
+    expect(guestNote(me('waiting'), 2)).toBe(
+      "Stay nearby. We'll text you when you're 2 away and again when it's your turn.",
+    );
+    expect(guestNote(me('up_next'), 2)).toBe("Stay nearby. We'll text you when it's your turn.");
+    expect(guestNote(me('up_next'), 2)).not.toMatch(/away/);
+    expect(guestNote(me('waiting'), 0)).toMatch(/when you're almost up/);
+    expect(guestNote(me('up_next', false), 2)).toBe('Keep this page open. It updates by itself.');
+    expect(guestNote(me('done'), 2)).toBeNull();
+    expect(guestNote(null, 2)).toBeNull();
+  });
+
+  it('labels an uncallable Call next as §2.5 now specifies', () => {
+    expect(callNextEmptyLabel(0, false)).toBe('Line is empty');
+    expect(callNextEmptyLabel(3, false)).toBe('Nobody checked in');
+    expect(callNextEmptyLabel(3, true)).toBeNull();
   });
 });
