@@ -7,29 +7,29 @@
 <style>
 /* ===== Design tokens (see DESIGN.md §1) ===== */
 :root, .light {
-  --bg:#FFFFFF; --surface:#F2F4F7; --surface-2:#E3E7ED; --border:#8A94A3;
-  --text:#0A0A0A; --text-muted:#3A4250;
-  --primary:#1537B8; --on-primary:#FFFFFF; --danger:#B3121B; --on-danger:#FFFFFF;
+  --bg:#EFEDE8; --surface:#F8F7F3; --surface-2:#E2DFD6; --border:#8C8A7E;
+  --text:#1C1E17; --text-muted:#43463A;
+  --primary:#545E40; --on-primary:#FFFFFF; --danger:#9C2B1E; --on-danger:#FFFFFF;
   --scrim:rgba(0,0,0,.55);
-  --waiting:#4A5361;  --on-waiting:#FFF;  --waiting-tint:#F2F4F7;
-  --upnext:#F5A300;   --on-upnext:#000;   --upnext-tint:#FFF1CC;
-  --serving:#067A4A;  --on-serving:#FFF;  --serving-tint:#D6F5E6;
-  --done:#5B6472;     --on-done:#FFF;     --done-tint:#FFFFFF;
-  --skipped:#6B2FD6;  --on-skipped:#FFF;  --skipped-tint:#EEE6FF;
-  --noshow:#B3121B;   --on-noshow:#FFF;   --noshow-tint:#FFE3E4;
+  --waiting:#5B5E50;  --on-waiting:#FFF;  --waiting-tint:#F8F7F3;
+  --upnext:#D9A21B;   --on-upnext:#000;   --upnext-tint:#F6E6B8;
+  --serving:#3F6B2E;  --on-serving:#FFF;  --serving-tint:#D8E2C8;
+  --done:#6E7064;     --on-done:#FFF;     --done-tint:#EFEDE8;
+  --skipped:#6E4A78;  --on-skipped:#FFF;  --skipped-tint:#ECE2EF;
+  --noshow:#9C2B1E;   --on-noshow:#FFF;   --noshow-tint:#F4DDD7;
   --shadow:0 -4px 24px rgba(0,0,0,.18);
 }
 .dark {
-  --bg:#000000; --surface:#14171B; --surface-2:#232830; --border:#4A5361;
-  --text:#F7F8FA; --text-muted:#C3CAD4;
-  --primary:#8FB0FF; --on-primary:#000000; --danger:#FF7A7F; --on-danger:#000;
+  --bg:#11130D; --surface:#1C1F17; --surface-2:#2A2E23; --border:#5C604F;
+  --text:#EFEDE8; --text-muted:#C8C7BA;
+  --primary:#AEB395; --on-primary:#11130D; --danger:#FF8C7A; --on-danger:#000;
   --scrim:rgba(0,0,0,.7);
-  --waiting:#A7B0BD;  --on-waiting:#000;  --waiting-tint:#14171B;
-  --upnext:#FFC23D;   --on-upnext:#000;   --upnext-tint:#3A2A00;
-  --serving:#3DDC97;  --on-serving:#000;  --serving-tint:#06301F;
-  --done:#6E7785;     --on-done:#FFF;     --done-tint:#000;
-  --skipped:#B79BFF;  --on-skipped:#000;  --skipped-tint:#24163F;
-  --noshow:#FF7A7F;   --on-noshow:#000;   --noshow-tint:#3D0B0E;
+  --waiting:#B3B5A6;  --on-waiting:#000;  --waiting-tint:#1C1F17;
+  --upnext:#F0C04A;   --on-upnext:#000;   --upnext-tint:#3A2C05;
+  --serving:#A8CF86;  --on-serving:#000;  --serving-tint:#1D2E14;
+  --done:#6E7064;     --on-done:#FFF;     --done-tint:#11130D;
+  --skipped:#D2A8DC;  --on-skipped:#000;  --skipped-tint:#2C1B31;
+  --noshow:#FF8C7A;   --on-noshow:#000;   --noshow-tint:#3A120C;
   --shadow:0 -4px 24px rgba(0,0,0,.6);
 }
 
@@ -37,7 +37,7 @@
 * { box-sizing:border-box; }
 html, body { margin:0; }
 body {
-  background:#D9DDE3; color:#111;
+  background:#D6D3C9; color:#1C1E17;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   padding:24px 16px 64px;
 }
@@ -126,8 +126,8 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
 .toast { position:absolute; left:16px; right:16px; bottom:124px; height:56px; border-radius:14px; background:var(--text); color:var(--bg); display:flex; align-items:center; justify-content:space-between; padding:0 6px 0 16px; font-weight:700; font-size:16px; z-index:3; white-space:nowrap; }
 .toast b { color:var(--primary); }
 .dark .toast b, .light .toast b { filter:none; }
-.toast .undo { height:48px; padding:0 14px; display:grid; place-items:center; font-weight:900; color:#8FB0FF; }
-.dark .toast .undo { color:#1537B8; }
+.toast .undo { height:48px; padding:0 14px; display:grid; place-items:center; font-weight:900; color:#AEB395; }
+.dark .toast .undo { color:#545E40; }
 
 /* Sheet */
 .scrim { position:absolute; inset:0; background:var(--scrim); z-index:4; }

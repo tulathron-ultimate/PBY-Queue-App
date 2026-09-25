@@ -8,7 +8,7 @@ Visual reference: [`mockups.html`](./mockups.html). Open it in any browser; it h
 ## 0. Design principles
 
 1. **One thumb, one glance.** The host is holding a camera. Every frequent host action must be reachable with the right or left thumb in the bottom 40% of the screen and must be readable at arm's length. Primary action (**Call next**) is always pinned at the bottom.
-2. **Sunlight first.** The default theme is light: near-black text on white, solid saturated status fills, no light-gray text, no thin fonts, no meaning carried by subtle tints alone. Dark mode is for evening and indoor use.
+2. **Sunlight first.** The default theme is light: near-black text on the brand cream, solid saturated status fills, no light-gray text, no thin fonts, no meaning carried by subtle tints alone. Dark mode is for evening and indoor use.
 3. **Never color alone.** Every status is shown as color **plus** a text label **plus** an icon/shape, so it survives glare, color blindness and grayscale.
 4. **Forgiving over confirming.** Frequent actions (Call next, Skip, No-show, Done) run immediately and show a 6-second **Undo** toast. Confirmation dialogs are used only for destructive, rare actions (Remove party, End event, Clear queue).
 5. **Guests need three facts.** Where am I, who is up now, roughly how long. Everything else on the guest page is secondary and small.
@@ -26,19 +26,21 @@ Contrast targets: body text ≥ 7:1 (WCAG AAA) against its background; text on s
 
 #### Neutrals and brand
 
+Palette follows the Photos by Yaz brand (photosbyyaz.com): cream `#EFEDE8` background, olive `#545E40` (logo badge) as the primary action color, and sage `#AEB395` as the dark-mode primary and accent. Status colors are earthy versions (ochre, leaf green, plum, brick) chosen to sit with the brand while staying distinct and sun-readable.
+
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--bg` | `#FFFFFF` | `#000000` | Page background (true black saves OLED battery) |
-| `--surface` | `#F2F4F7` | `#14171B` | Cards, list rows |
-| `--surface-2` | `#E3E7ED` | `#232830` | Sheets, pressed states, input fill |
-| `--border` | `#8A94A3` | `#4A5361` | Hairlines, input borders (2px on inputs) |
-| `--text` | `#0A0A0A` | `#F7F8FA` | Primary text (19.8:1 / 19.6:1) |
-| `--text-muted` | `#3A4250` | `#C3CAD4` | Secondary text; never lighter than this |
-| `--primary` | `#1537B8` | `#8FB0FF` | Primary buttons, links, focus |
-| `--on-primary` | `#FFFFFF` | `#000000` | Text on primary (8.9:1 / 10.1:1) |
-| `--danger` | `#B3121B` | `#FF7A7F` | Remove, End event |
+| `--bg` | `#EFEDE8` | `#11130D` | Page background (brand cream / warm near-black) |
+| `--surface` | `#F8F7F3` | `#1C1F17` | Cards, list rows |
+| `--surface-2` | `#E2DFD6` | `#2A2E23` | Sheets, pressed states, input fill |
+| `--border` | `#8C8A7E` | `#5C604F` | Hairlines, input borders (2px on inputs) |
+| `--text` | `#1C1E17` | `#EFEDE8` | Primary text (14.4:1 / 16.0:1) |
+| `--text-muted` | `#43463A` | `#C8C7BA` | Secondary text; never lighter than this (8.3:1 / 11.0:1) |
+| `--primary` | `#545E40` | `#AEB395` | Brand olive / sage. Primary buttons, links, focus |
+| `--on-primary` | `#FFFFFF` | `#11130D` | Text on primary (6.9:1 / 8.6:1) |
+| `--danger` | `#9C2B1E` | `#FF8C7A` | Remove, End event |
 | `--on-danger` | `#FFFFFF` | `#000000` | |
-| `--focus-ring` | `#1537B8` | `#FFD34D` | 3px outline, 2px offset |
+| `--focus-ring` | `#545E40` | `#F0C04A` | 3px outline, 2px offset |
 | `--scrim` | `rgba(0,0,0,.55)` | `rgba(0,0,0,.7)` | Behind sheets and dialogs |
 
 #### Queue status colors
@@ -47,12 +49,12 @@ Each status has a **solid** fill (badges, the Now-serving card, lobby display), 
 
 | Status | Label | Icon | Solid (L / D) | On (L / D) | Tint (L / D) |
 |---|---|---|---|---|---|
-| `waiting` | Waiting | ○ hollow circle | `#4A5361` / `#A7B0BD` | `#FFF` / `#000` | `#F2F4F7` / `#14171B` |
-| `up_next` | Up next | ◆ diamond (or bell) | `#F5A300` / `#FFC23D` | `#000` / `#000` | `#FFF1CC` / `#3A2A00` |
-| `now_serving` | Now serving | ● filled circle / camera | `#067A4A` / `#3DDC97` | `#FFF` / `#000` | `#D6F5E6` / `#06301F` |
-| `done` | Done | ✓ check | `#5B6472` / `#6E7785` | `#FFF` / `#FFF` | `#FFFFFF` / `#000000` (row text uses `--text-muted`) |
-| `skipped` | Skipped | ↷ skip arrow | `#6B2FD6` / `#B79BFF` | `#FFF` / `#000` | `#EEE6FF` / `#24163F` |
-| `no_show` | No-show | ✕ in circle | `#B3121B` / `#FF7A7F` | `#FFF` / `#000` | `#FFE3E4` / `#3D0B0E` |
+| `waiting` | Waiting | ○ hollow circle | `#5B5E50` / `#B3B5A6` | `#FFF` / `#000` | `#F8F7F3` / `#1C1F17` |
+| `up_next` | Up next | ◆ diamond (or bell) | `#D9A21B` / `#F0C04A` | `#000` / `#000` | `#F6E6B8` / `#3A2C05` |
+| `now_serving` | Now serving | ● filled circle / camera | `#3F6B2E` / `#A8CF86` | `#FFF` / `#000` | `#D8E2C8` / `#1D2E14` |
+| `done` | Done | ✓ check | `#6E7064` / `#6E7064` | `#FFF` / `#FFF` | `#EFEDE8` / `#11130D` (row text uses `--text-muted`) |
+| `skipped` | Skipped | ↷ skip arrow | `#6E4A78` / `#D2A8DC` | `#FFF` / `#000` | `#ECE2EF` / `#2C1B31` |
+| `no_show` | No-show | ✕ in circle | `#9C2B1E` / `#FF8C7A` | `#FFF` / `#000` | `#F4DDD7` / `#3A120C` |
 
 Notes:
 - Amber `up_next` uses black text on purpose: white on amber fails contrast and disappears in sun.
