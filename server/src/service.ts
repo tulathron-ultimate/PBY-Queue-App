@@ -31,6 +31,7 @@ import {
   type ImportPartyInput,
   type JoinInfo,
   type MoveDirection,
+  type PartyState,
   type PartySource,
   type QueueResult,
   type QueueSnapshot,
@@ -81,6 +82,14 @@ export interface AddOptions {
 type MutationResult = QueueResult<PartyRecord> & { samples?: number[]; extraEffects?: SmsEffect[] };
 
 const UNDO_KEEP = 20;
+
+/** The states in which a pending tray text still makes sense. */
+const STILL_RELEVANT: Record<TemplateKey, PartyState[]> = {
+  join: ['waiting', 'up_next'],
+  up_next: ['waiting', 'up_next'],
+  your_turn: ['now_serving'],
+  skipped: ['skipped', 'no_show'],
+};
 
 function queueChanged(a: PartyRecord, b: PartyRecord): boolean {
   return (
@@ -385,6 +394,7 @@ export class QueueService {
         if (!prev) this.store.insertParty(p);
         else if (queueChanged(prev, p)) this.store.updatePartyQueue(p);
       }
+      this.cancelStaleTexts(eventId, r.parties);
       const samples =
         r.samples ?? (r.sampleMs !== null ? addSample(event.samples, r.sampleMs) : event.samples);
       const texts = this.createTexts(
@@ -423,8 +433,16 @@ export class QueueService {
     return result;
   }
 
-  private nameOf(parties: readonly PartyRecord[], id: string | undefined): string {
-    return parties.find((p) => p.id === id)?.name ?? '';
+  /** Drops tray texts that no longer apply, e.g. "Up next" for a party now being served. */
+  private cancelStaleTexts(eventId: string, parties: readonly PartyRecord[]): void {
+    const byId = new Map(parties.map((p) => [p.id, p]));
+    for (const sms of this.store.listSms(eventId)) {
+      if (sms.status !== 'pending') continue;
+      const party = byId.get(sms.partyId);
+      if (!party || !STILL_RELEVANT[sms.template].includes(party.state)) {
+        this.store.setSmsStatus(sms.id, 'canceled', this.now());
+      }
+    }
   }
 
   callNext(eventId: string): MutationResult {

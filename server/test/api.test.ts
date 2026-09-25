@@ -217,13 +217,13 @@ describe('queue flow (tap-to-send)', () => {
     advance(2000);
     s = (await host(h, 'POST', '/call-next')).json();
     expect(s.parties.find((p) => p.id === emma.id)!.state).toBe('now_serving');
-    // Tray order: Up next texts first, then Your turn
+    // Tray order: Up next texts first, then Your turn. Emma's own "Up next" text is stale
+    // now that she is being served, so it drops off the tray.
     expect(s.pendingTexts.map((t) => [t.template, t.to])).toEqual([
       ['up_next', '+15553094417'],
-      ['up_next', '+15552018830'],
       ['your_turn', '+15552018830'],
     ]);
-    expect(s.pendingTexts[2].body).toBe(
+    expect(s.pendingTexts[1].body).toBe(
       "Pumpkin Patch Portra: Emma, it's your turn! Please come to the camera now.",
     );
 
@@ -244,7 +244,11 @@ describe('queue flow (tap-to-send)', () => {
 
     // Mark a tray text sent
     s = (await host(h, 'POST', `/texts/${s.pendingTexts[0].id}`, { status: 'sent' })).json();
-    expect(s.pendingTexts).toHaveLength(2);
+    expect(s.pendingTexts).toHaveLength(1);
+    expect(s.parties.find((p) => p.id === nguyen.id)!.lastText).toMatchObject({
+      template: 'up_next',
+      status: 'sent',
+    });
 
     // Call-next debounce (1 s)
     advance(200);

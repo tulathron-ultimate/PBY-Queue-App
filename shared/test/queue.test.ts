@@ -16,11 +16,19 @@ import {
   setArrived,
   skipCurrent,
   takeSnapshot,
+  type QueueResult,
 } from '../src/queue.js';
+import type { QueueParty } from '../src/types.js';
 import { line, order, party, states } from './helpers.js';
 
 const N = 2;
 const T0 = 1_000_000;
+
+/** Starts a line with Up next computed, typed like any other queue result. */
+const start = (parties: QueueParty[]): QueueResult<QueueParty> => ({
+  ...recomputeUpNext(parties, N),
+  sampleMs: null,
+});
 
 describe('recomputeUpNext', () => {
   it('marks the first N arrived parties up_next and texts each once (bulk case)', () => {
@@ -40,7 +48,7 @@ describe('recomputeUpNext', () => {
   });
 
   it('does not re-text a party that moves out of range and back in', () => {
-    let r = recomputeUpNext(line(4), N);
+    let r = start(line(4));
     // host moves p4 to next: p2 drops out of range
     r = move(r.parties, 'p4', 'next', N);
     expect(states(r.parties)).toMatchObject({ p4: 'up_next', p1: 'up_next', p2: 'waiting' });
@@ -61,7 +69,7 @@ describe('recomputeUpNext', () => {
 
 describe('callNext', () => {
   it('marks current done, calls the first party and recomputes Up next', () => {
-    let r = recomputeUpNext(line(4), N);
+    let r = start(line(4));
     r = callNext(r.parties, N, T0);
     expect(states(r.parties)).toMatchObject({
       p1: 'now_serving',
@@ -130,7 +138,7 @@ describe('skip and re-insert', () => {
   });
 
   it('re-inserts a skipped party 3 spots back (position 4) with a fresh Up next', () => {
-    let r = recomputeUpNext(line(7), N);
+    let r = start(line(7));
     r = callNext(r.parties, N, T0);
     r = skipCurrent(r.parties, N, T0 + 1000); // p1 skipped, p2 serving
     r = reinsert(r.parties, 'p1', N);
@@ -176,7 +184,7 @@ describe('skip and re-insert', () => {
 
 describe('reorder, remove, add', () => {
   it('moves up, down and to next', () => {
-    let r = recomputeUpNext(line(4), N);
+    let r = start(line(4));
     r = move(r.parties, 'p3', 'up', N);
     expect(order(r.parties)).toEqual(['p1', 'p3', 'p2', 'p4']);
     r = move(r.parties, 'p1', 'down', N);
@@ -188,14 +196,14 @@ describe('reorder, remove, add', () => {
   });
 
   it('remove takes a party out of line and promotes the next one', () => {
-    let r = recomputeUpNext(line(3), N);
+    let r = start(line(3));
     r = removeParty(r.parties, 'p1', N, T0);
     expect(states(r.parties)).toMatchObject({ p1: 'removed', p2: 'up_next', p3: 'up_next' });
     expect(r.effects).toEqual([{ partyId: 'p3', template: 'up_next' }]);
   });
 
   it('adds at the end or next, assigning sort keys', () => {
-    let r = recomputeUpNext(line(2), N);
+    let r = start(line(2));
     r = addParties(r.parties, [party(3, 'waiting', { sortKey: 0 })], N);
     expect(order(r.parties)).toEqual(['p1', 'p2', 'p3']);
     r = addParties(r.parties, [party(4, 'waiting', { sortKey: 0 })], N, 'next');
