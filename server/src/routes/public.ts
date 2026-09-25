@@ -1,12 +1,17 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import QRCode from 'qrcode';
 import type { AppContext } from '../app.js';
 import { ServiceError } from '../errors.js';
-import { safeEqual, verifyPin } from '../security.js';
+import { clientKey, safeEqual, verifyPin } from '../security.js';
 import { joinLink } from '../snapshots.js';
 import type { CreateEventInput } from '../service.js';
 
 type Body = Record<string, unknown>;
+
+const ADMIN_ALL = 'all';
+
+/** The rate-limit key for the client: its IPv4 address or IPv6 /64 (SEC-5). */
+const ip = (req: FastifyRequest) => clientKey(req.ip);
 
 export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): void {
   const { service, cfg, limits } = ctx;
@@ -26,11 +31,19 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
         'Set ADMIN_PASSWORD on the server first.',
       );
     }
-    const wait = limits.admin.retryAfter(req.ip, service.now());
+    const now = service.now();
+    // Per client, plus a backstop across every address (SEC-5): a botnet or a rotating IPv6
+    // range must not get unlimited guesses at the password that unlocks Twilio spend. While the
+    // backstop is on, even the right password is refused, so guesses learn nothing.
+    const wait = Math.max(
+      limits.admin.retryAfter(ip(req), now),
+      limits.adminAll.retryAfter(ADMIN_ALL, now),
+    );
     if (wait)
       throw new ServiceError(429, 'rate_limited', `Try again in ${wait} s.`, { retryAfter: wait });
     if (!safeEqual(String(body.adminPassword ?? ''), cfg.adminPassword)) {
-      limits.admin.hit(req.ip, service.now());
+      limits.admin.hit(ip(req), now);
+      limits.adminAll.hit(ADMIN_ALL, now);
       throw new ServiceError(401, 'wrong_admin_password', 'Wrong admin password.');
     }
     const event = await service.createEvent(body, ctx.originOf(req));
@@ -50,7 +63,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.post('/api/host/login', async (req, reply) => {
     const body = (req.body ?? {}) as Body;
     const now = service.now();
-    const ipWait = limits.pinIp.retryAfter(req.ip, now);
+    const ipWait = limits.pinIp.retryAfter(ip(req), now);
     if (ipWait) {
       throw new ServiceError(429, 'rate_limited', `Too many tries. Try again in ${ipWait} s.`, {
         retryAfter: ipWait,
@@ -64,7 +77,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
           : null;
     // Wrong PINs lock the event per (event, IP), so a stranger holding the public join code
     // only locks themselves out; a much higher per-event count is a backstop against many IPs.
-    const eventIpKey = event ? `${event.id} ${req.ip}` : '';
+    const eventIpKey = event ? `${event.id} ${ip(req)}` : '';
     if (event && !event.purgedAt) {
       const lock = Math.max(
         limits.pinEvent.retryAfter(eventIpKey, now),
@@ -84,12 +97,12 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
     const ok =
       event && !event.purgedAt ? await verifyPin(String(body.pin ?? ''), event.pinHash) : false;
     if (!ok || !event) {
-      limits.pinIp.hit(req.ip, now);
+      limits.pinIp.hit(ip(req), now);
       if (event) {
         limits.pinEvent.hit(eventIpKey, now);
         limits.pinEventAll.hit(event.id, now);
       }
-      const triesLeft = limits.pinIp.remaining(req.ip, now);
+      const triesLeft = limits.pinIp.remaining(ip(req), now);
       throw new ServiceError(401, 'wrong_pin', 'Wrong PIN.', { triesLeft });
     }
     const token = service.sessions.create(event.id);
@@ -121,18 +134,28 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   /* ------------------------------------------------------------ guests */
 
-  /** Join page info. Unknown codes count toward the same per-IP miss limit as status tokens. */
-  app.get<{ Params: { code: string } }>('/api/join/:code', async (req) => {
+  /**
+   * Looks up a join code for a guest-facing route. Unknown codes count toward the same per-IP
+   * miss limit as status tokens on every route that answers 404 for them (QA #16, SEC-4), so
+   * none of them is an unlimited oracle for guessing codes.
+   */
+  const joinEvent = (ip: string, code: string) => {
     const now = service.now();
-    if (limits.status.retryAfter(req.ip, now) > 0) {
+    if (limits.status.retryAfter(ip, now) > 0) {
       throw new ServiceError(429, 'rate_limited', 'Too many requests. Try again in a minute.');
     }
-    const info = service.joinInfo(req.params.code);
-    if (!info) {
-      limits.status.hit(req.ip, now);
+    const event = service.store.getEventByCode(code);
+    if (!event || event.purgedAt) {
+      limits.status.hit(ip, now);
       throw new ServiceError(404, 'not_found', 'Not found.');
     }
-    return info;
+    return event;
+  };
+
+  /** Join page info. */
+  app.get<{ Params: { code: string } }>('/api/join/:code', async (req) => {
+    const event = joinEvent(ip(req), req.params.code);
+    return service.joinInfo(event.code)!;
   });
 
   app.post<{ Params: { code: string } }>('/api/join/:code', async (req) => {
@@ -141,21 +164,22 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
     if (typeof body.website === 'string' && body.website.trim()) {
       throw new ServiceError(400, 'bad_request', 'Request failed.');
     }
+    const event = joinEvent(ip(req), req.params.code);
     // Keyed on (IP, event): a venue's shared Wi-Fi or carrier NAT address has one budget per
     // event, and the honeypot, one active party per phone and the 500-party cap still apply.
-    if (!limits.join.hit(`${req.ip} ${req.params.code.toUpperCase()}`, service.now())) {
+    // Only real codes become keys, so attacker-chosen strings can't grow the map (SEC-4).
+    if (!limits.join.hit(`${ip(req)} ${event.code}`, service.now())) {
       throw new ServiceError(
         429,
         'rate_limited',
         'Too many sign-ups from this network. Try again soon.',
       );
     }
-    return service.selfJoin(req.params.code, body);
+    return service.selfJoin(event.code, body);
   });
 
   app.get<{ Params: { code: string } }>('/api/join/:code/qr.svg', async (req, reply) => {
-    const event = service.store.getEventByCode(req.params.code);
-    if (!event || event.purgedAt) throw new ServiceError(404, 'not_found', 'Not found.');
+    const event = joinEvent(ip(req), req.params.code);
     const svg = await QRCode.toString(joinLink(event), {
       type: 'svg',
       margin: 2,
@@ -185,7 +209,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   /** G1 status (polling fallback). Unknown tokens get a generic 404. */
   app.get<{ Params: { token: string } }>('/api/status/:token', async (req) => {
-    statusGuard(req.ip, req.params.token);
+    statusGuard(ip(req), req.params.token);
     const snap = service.guestSnapshot(req.params.token);
     if (!snap) throw new ServiceError(404, 'not_found', 'Not found.');
     return snap;
@@ -193,7 +217,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   /** G4 "I'm here" check-in. */
   app.post<{ Params: { token: string } }>('/api/status/:token/arrive', async (req) => {
-    statusGuard(req.ip, req.params.token);
+    statusGuard(ip(req), req.params.token);
     return service.guestArrive(req.params.token);
   });
 
@@ -240,13 +264,13 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
     { websocket: true },
     (socket, req) => {
       try {
-        statusGuard(req.ip, req.params.token);
+        statusGuard(ip(req), req.params.token);
       } catch {
         return socket.close(4429, 'rate_limited');
       }
       const party = service.store.getPartyByToken(req.params.token);
       if (!party || !service.getEvent(party.eventId)) return socket.close(4404, 'not_found');
-      ctx.hub.addGuest(party.eventId, party.id, socket);
+      ctx.hub.addGuest(party.eventId, party.id, socket, ip(req));
     },
   );
 }

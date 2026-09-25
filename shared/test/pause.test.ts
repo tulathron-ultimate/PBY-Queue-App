@@ -67,7 +67,10 @@ describe('pause the line (E6)', () => {
     expect(cleanPauseMessage('  Back in 10 minutes — lunch break  ')).toBe(
       'Back in 10 minutes — lunch break',
     );
-    expect(cleanPauseMessage('a‮b\u0000c\nd⁦e')).toBe('a b c d e');
+    expect(cleanPauseMessage('a‮b\u0000c\nd⁦e')).toBe('abc de');
+    // Same hygiene as names (SEC-8): zero-width and blank-looking characters are removed.
+    expect(cleanPauseMessage('Back\u200B soon\u3164')).toBe('Back soon');
+    expect(cleanPauseMessage('\u3164\u200B')).toBeNull();
     expect(cleanPauseMessage('   ')).toBeNull();
     expect(cleanPauseMessage(42)).toBeNull();
     expect(cleanPauseMessage('<b>hi</b>')).toBe('<b>hi</b>'); // rendered as text, never HTML

@@ -8,6 +8,7 @@ import type {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '../app.js';
 import { ServiceError } from '../errors.js';
+import { clientKey } from '../security.js';
 import { Sessions } from '../sessions.js';
 
 type Body = Record<string, unknown>;
@@ -50,7 +51,8 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
   const snapshot = (id: string) => service.hostSnapshot(id);
 
   app.register(async (host) => {
-    host.addHook('preHandler', requireHost as never);
+    // onRequest, so an unauthenticated request is refused before its body is read (SEC-9).
+    host.addHook('onRequest', requireHost as never);
     // §2.12 auto-close counts host actions only. This hook runs after requireHost, so only
     // authenticated host requests get here; reads and the live feed don't count as actions.
     host.addHook('preHandler', async (req: FastifyRequest<EventParams>, reply) => {
@@ -131,20 +133,25 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
     });
 
     /** A2/A3/A4 import. Imported parties start as not arrived (A8). */
-    host.post<EventParams>('/api/host/events/:id/import', async (req) => {
-      const body = (req.body ?? {}) as Body;
-      const source = IMPORT_SOURCES.includes(body.source as PartySource)
-        ? (body.source as PartySource)
-        : 'import';
-      const added = service.addParties(req.params.id, body.rows as Partial<ImportPartyInput>[], {
-        source,
-        arrived: body.arrived === true,
-        position: 'end',
-        sendJoinText: body.sendJoinTexts === true,
-        consentConfirmed: body.consentConfirmed === true,
-      });
-      return { added: added.length, snapshot: snapshot(req.params.id) };
-    });
+    // A 500-row roster with members and notes is up to about 1 MB of JSON (SEC-9).
+    host.post<EventParams>(
+      '/api/host/events/:id/import',
+      { bodyLimit: 2 * 1024 * 1024 },
+      async (req) => {
+        const body = (req.body ?? {}) as Body;
+        const source = IMPORT_SOURCES.includes(body.source as PartySource)
+          ? (body.source as PartySource)
+          : 'import';
+        const added = service.addParties(req.params.id, body.rows as Partial<ImportPartyInput>[], {
+          source,
+          arrived: body.arrived === true,
+          position: 'end',
+          sendJoinText: body.sendJoinTexts === true,
+          consentConfirmed: body.consentConfirmed === true,
+        });
+        return { added: added.length, snapshot: snapshot(req.params.id) };
+      },
+    );
 
     host.patch<PartyParams>('/api/host/events/:id/parties/:pid', async (req) => {
       service.updateParty(req.params.id, req.params.pid, (req.body ?? {}) as Body);
@@ -210,7 +217,7 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
     });
 
     host.get<EventParams>('/ws/host/:id', { websocket: true }, (socket, req) => {
-      ctx.hub.addHost(req.params.id, socket, token(req, req.params.id)!);
+      ctx.hub.addHost(req.params.id, socket, token(req, req.params.id)!, clientKey(req.ip));
     });
   });
 }

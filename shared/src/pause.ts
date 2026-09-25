@@ -5,6 +5,7 @@
  */
 import { orderActive, type QueueResult, type SmsEffect } from './queue.js';
 import type { QueueParty } from './types.js';
+import { cleanText } from './text.js';
 
 /** Longest pause message, e.g. "Back in 10 minutes - lunch break". */
 export const PAUSE_MESSAGE_MAX = 120;
@@ -19,7 +20,7 @@ const UNSAFE_CHARS = /[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/g;
  */
 export function cleanPauseMessage(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const text = value.replace(UNSAFE_CHARS, ' ').replace(/\s+/g, ' ').trim();
+  const text = cleanText(value).replace(UNSAFE_CHARS, ' ').replace(/\s+/g, ' ').trim();
   return Array.from(text).slice(0, PAUSE_MESSAGE_MAX).join('').trim() || null;
 }
 

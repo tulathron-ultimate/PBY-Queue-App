@@ -34,6 +34,9 @@ export function purgeEvent(db: DB, eventId: string, now: number): void {
        WHERE id = ?`,
     ).run(now, now, counts.served ?? 0, counts.no_show ?? 0, avgMs, eventId);
   })();
+  // SEC-3: the WAL still holds the pre-delete page images. Copy the zeroed pages back into the
+  // database file and empty the WAL, so the purge is real on disk, not just in queries.
+  db.pragma('wal_checkpoint(TRUNCATE)');
 }
 
 export interface RetentionResult {

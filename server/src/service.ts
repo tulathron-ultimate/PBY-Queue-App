@@ -9,6 +9,7 @@ import {
   callNext as queueCallNext,
   clampInt,
   cleanPauseMessage,
+  cleanText,
   completeCurrent,
   DEFAULTS,
   hasErrors,
@@ -124,8 +125,11 @@ function queueChanged(a: PartyRecord, b: PartyRecord): boolean {
   );
 }
 
+/** Event names are shown to every guest, so they get the same hygiene as party names (SEC-8). */
 function text(value: unknown, max: number): string {
-  return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, max) : '';
+  return typeof value === 'string'
+    ? cleanText(value).trim().replace(/\s+/g, ' ').slice(0, max)
+    : '';
 }
 
 export class QueueService {

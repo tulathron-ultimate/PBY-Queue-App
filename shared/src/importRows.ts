@@ -5,6 +5,7 @@
  */
 import { LIMITS } from './limits.js';
 import { normalizePhone } from './phone.js';
+import { cleanText } from './text.js';
 
 export type ImportField = 'name' | 'phone' | 'size' | 'members' | 'group' | 'notes';
 
@@ -110,7 +111,16 @@ export function splitMembers(value: string): string[] {
 /** Longest invalid phone entry kept for the host to fix. */
 export const PHONE_INPUT_MAX = 40;
 
-export function validateDraft(draft: ImportDraft, rowNumber: number): ImportRow {
+export function validateDraft(input: ImportDraft, rowNumber: number): ImportRow {
+  // SEC-8: no bidi overrides, invisible or control characters in anything shown on a screen.
+  const draft: ImportDraft = {
+    name: cleanText(input.name),
+    phone: cleanText(input.phone),
+    size: input.size,
+    members: cleanText(input.members),
+    group: cleanText(input.group),
+    notes: cleanText(input.notes, { multiline: true }),
+  };
   const issues: ImportIssue[] = [];
   const name = draft.name.trim().replace(/\s+/g, ' ');
   if (!name) issues.push({ level: 'error', code: 'name_missing', message: 'Name is missing.' });

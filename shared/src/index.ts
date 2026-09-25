@@ -8,3 +8,4 @@ export * from './vcard.js';
 export * from './importRows.js';
 export * from './pause.js';
 export * from './csv.js';
+export * from './text.js';
