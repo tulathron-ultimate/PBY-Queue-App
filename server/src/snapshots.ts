@@ -108,6 +108,8 @@ export function buildHostSnapshot(input: HostSnapshotInput): HostSnapshot {
   const pendingTexts: PendingText[] = [];
   for (const s of sms) {
     if (s.status !== 'pending' || s.provider !== 'tap') continue;
+    // E6: no Up next texts while paused. Ones queued before the pause wait here until Resume.
+    if (event.paused && s.template === 'up_next') continue;
     const party = byId.get(s.partyId);
     // Turned to "No texts", opted out or lost consent since it was queued: never offer it.
     if (!party?.phone || !input.canText(party)) continue;

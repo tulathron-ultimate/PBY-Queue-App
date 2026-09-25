@@ -824,14 +824,18 @@ export class QueueService {
       if (!this.canText(event, party)) {
         throw new ServiceError(409, 'cannot_text', "This party can't be texted.");
       }
+      const waiting = party.state === 'waiting' || party.state === 'up_next';
+      // E6: while paused, a waiting party is told the line is paused, not to come forward.
       const template: TemplateKey =
-        party.state === 'now_serving'
-          ? 'your_turn'
-          : party.state === 'up_next'
-            ? 'up_next'
-            : party.state === 'skipped' || party.state === 'no_show'
-              ? 'skipped'
-              : 'join';
+        event.paused && waiting
+          ? 'paused'
+          : party.state === 'now_serving'
+            ? 'your_turn'
+            : party.state === 'up_next'
+              ? 'up_next'
+              : party.state === 'skipped' || party.state === 'no_show'
+                ? 'skipped'
+                : 'join';
       return { parties, effects: [{ partyId, template }] };
     });
   }

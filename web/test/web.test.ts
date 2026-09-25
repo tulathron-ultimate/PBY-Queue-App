@@ -161,6 +161,12 @@ describe('QA nits', () => {
     expect(guestNote(null, 2)).toBeNull();
   });
 
+  it('says the line is paused on Call next while paused (E6)', () => {
+    expect(callNextEmptyLabel(5, true, true)).toBe('Line paused');
+    expect(callNextEmptyLabel(0, false, true)).toBe('Line paused');
+    expect(callNextEmptyLabel(5, true, false)).toBeNull();
+  });
+
   it('labels an uncallable Call next as §2.5 now specifies', () => {
     expect(callNextEmptyLabel(0, false)).toBe('Line is empty');
     expect(callNextEmptyLabel(3, false)).toBe('Nobody checked in');

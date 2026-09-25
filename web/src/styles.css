@@ -256,6 +256,10 @@ svg.icon {
 .content.with-callbar {
   padding-bottom: calc(max(80px, 25vh) + 28px + 16px + env(safe-area-inset-bottom));
 }
+/* E6: the paused strip above the Call next bar is about 72px tall. */
+.content.with-pausebar {
+  padding-bottom: calc(max(80px, 25vh) + 28px + 16px + 76px + env(safe-area-inset-bottom));
+}
 
 .topbar {
   display: flex;
@@ -334,6 +338,16 @@ svg.icon {
 .live.reconnecting::before {
   background: var(--upnext);
 }
+.live.paused {
+  background: var(--upnext);
+  color: var(--on-upnext);
+  border-color: var(--upnext);
+}
+.live.paused::before {
+  width: 8px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, currentColor 35%, transparent 35% 65%, currentColor 65%);
+}
 .live.offline {
   background: var(--noshow-tint);
   border-color: var(--noshow);
@@ -377,6 +391,22 @@ svg.icon {
 .banner.danger {
   background: var(--noshow-tint);
   border-left-color: var(--noshow);
+}
+.banner.paused {
+  font-weight: 600;
+}
+.banner .pause-head svg.icon {
+  width: 20px;
+  height: 20px;
+  vertical-align: -4px;
+  stroke-width: 3;
+}
+.banner .pause-msg {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--fs-base);
+  font-weight: 800;
+  overflow-wrap: anywhere;
 }
 .banner.ok {
   background: var(--serving-tint);
@@ -692,6 +722,40 @@ svg.icon {
 .screen.guest ~ .bottombar .inner,
 .bottombar.guest .inner {
   max-width: 480px;
+}
+.pausebar {
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 0;
+}
+.pausebar .txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--upnext-tint);
+  border-left: 6px solid var(--upnext);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.pausebar .txt > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pausebar .btn {
+  width: auto;
+  flex: none;
+  min-height: 56px;
 }
 .addbtn {
   width: 80px;

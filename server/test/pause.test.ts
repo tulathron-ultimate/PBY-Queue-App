@@ -39,15 +39,19 @@ describe('pause the line (E6)', () => {
       pauseMessage: 'Back in 10 minutes — lunch break',
     });
     expect(s.undo?.label).toBe('Pause');
-    // Emma was texted Up next before the pause. Two more arrive while paused: they show as
-    // Up next, but nobody is told to come forward.
-    expect(pendingOf(s, 'up_next')).toHaveLength(1);
+    // Emma's Up next text was queued in the tray before the pause: it waits, hidden, until
+    // Resume. Two more arrive while paused: they show as Up next, but nobody is told to come
+    // forward.
+    expect(pendingOf(s, 'up_next')).toEqual([]);
     await addManual(h, 'Nguyen Family', '555-309-4417', { sendJoinText: false });
     await addManual(h, 'Smith Family', '555-740-1122', { sendJoinText: false });
     s = await snap(h);
     const [emma, nguyen, smith] = s.parties;
     expect(nguyen.state).toBe('up_next');
-    expect(pendingOf(s, 'up_next')).toEqual([emma.id]);
+    expect(pendingOf(s, 'up_next')).toEqual([]);
+    // "Text now" on a waiting party while paused tells them the line is paused.
+    s = (await host(h, 'POST', `/parties/${smith.id}/text`)).json();
+    expect(pendingOf(s, 'paused')).toEqual([smith.id]);
 
     const call = await host(h, 'POST', '/call-next');
     expect(call.statusCode).toBe(409);
@@ -60,6 +64,7 @@ describe('pause the line (E6)', () => {
     s = (await host(h, 'POST', '/resume')).json();
     expect(s.event).toMatchObject({ paused: false, pauseMessage: null });
     expect(pendingOf(s, 'up_next')).toEqual([emma.id, nguyen.id]);
+    expect(pendingOf(s, 'paused')).toEqual([]);
     expect((await guest(h, smith.token)).paused).toBe(false);
     advance(2000);
     expect((await host(h, 'POST', '/call-next')).statusCode).toBe(200);
