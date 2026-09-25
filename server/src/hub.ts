@@ -8,12 +8,23 @@ import type { QueueService } from './service.js';
 
 const PING_MS = 25_000;
 
+/**
+ * SEC-7 connection limits. A status link is one family (a few phones and tabs), a host session is
+ * one device; past these the oldest socket is closed (4408), so a reload never locks anyone out.
+ * An address gets at most `perIp` sockets in all (refused with 4429): venues share one Wi-Fi or
+ * carrier address, so this is generous and only stops one client from exhausting memory.
+ */
+export const WS_LIMITS = { perParty: 10, perSession: 5, perIp: 1000 };
+
 export class Hub {
   /** Host sockets per event, with the session token each one was opened with. */
   private hosts = new Map<string, Map<WebSocket, string>>();
   private guests = new Map<string, Map<WebSocket, string>>();
   private scheduled = new Set<string>();
   private timer: NodeJS.Timeout;
+  /** Open sockets per status link / host session, oldest first (SEC-7). */
+  private byOwner = new Map<string, Set<WebSocket>>();
+  private perIp = new Map<string, number>();
 
   constructor(private readonly service: QueueService) {
     service.onChange = (eventId) => this.schedule(eventId);
@@ -26,7 +37,37 @@ export class Hub {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
   }
 
-  addHost(eventId: string, ws: WebSocket, sessionToken: string): void {
+  /**
+   * Counts a new socket against its address and its owner (a party or a host session). Returns
+   * false, having closed the socket, when the address is over its limit.
+   */
+  private admit(ws: WebSocket, owner: string, max: number, ip: string): boolean {
+    const n = this.perIp.get(ip) ?? 0;
+    if (n >= WS_LIMITS.perIp) {
+      ws.close(4429, 'too_many_connections');
+      return false;
+    }
+    this.perIp.set(ip, n + 1);
+    const set = this.byOwner.get(owner) ?? new Set<WebSocket>();
+    set.add(ws);
+    this.byOwner.set(owner, set);
+    ws.on('close', () => {
+      const left = (this.perIp.get(ip) ?? 1) - 1;
+      if (left > 0) this.perIp.set(ip, left);
+      else this.perIp.delete(ip);
+      set.delete(ws);
+      if (!set.size && this.byOwner.get(owner) === set) this.byOwner.delete(owner);
+    });
+    for (const old of set) {
+      if (set.size <= max) break;
+      set.delete(old);
+      old.close(4408, 'replaced');
+    }
+    return true;
+  }
+
+  addHost(eventId: string, ws: WebSocket, sessionToken: string, ip: string): void {
+    if (!this.admit(ws, `h ${eventId} ${sessionToken}`, WS_LIMITS.perSession, ip)) return;
     const map = this.hosts.get(eventId) ?? new Map<WebSocket, string>();
     map.set(ws, sessionToken);
     this.hosts.set(eventId, map);
@@ -41,7 +82,8 @@ export class Hub {
     }
   }
 
-  addGuest(eventId: string, partyId: string, ws: WebSocket): void {
+  addGuest(eventId: string, partyId: string, ws: WebSocket, ip: string): void {
+    if (!this.admit(ws, `g ${partyId}`, WS_LIMITS.perParty, ip)) return;
     const map = this.guests.get(eventId) ?? new Map<WebSocket, string>();
     map.set(ws, partyId);
     this.guests.set(eventId, map);
@@ -104,5 +146,10 @@ export class Hub {
 
   close(): void {
     clearInterval(this.timer);
+    for (const map of [...this.hosts.values(), ...this.guests.values()]) {
+      for (const ws of map.keys()) ws.close(1001, 'server_shutdown');
+    }
+    this.hosts.clear();
+    this.guests.clear();
   }
 }

@@ -232,7 +232,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
       }
       const party = service.store.getPartyByToken(req.params.token);
       if (!party || !service.getEvent(party.eventId)) return socket.close(4404, 'not_found');
-      ctx.hub.addGuest(party.eventId, party.id, socket);
+      ctx.hub.addGuest(party.eventId, party.id, socket, ip(req));
     },
   );
 }

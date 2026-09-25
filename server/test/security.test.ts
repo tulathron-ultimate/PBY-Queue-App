@@ -4,10 +4,12 @@
  */
 import type { HostSnapshot } from '@pby/shared';
 import type { FastifyInstance } from 'fastify';
+import { EventEmitter } from 'node:events';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { WebSocket } from 'ws';
 import { buildApp, type AppContext } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { clientKey, RateLimiter } from '../src/security.js';
@@ -304,5 +306,67 @@ describe('SEC-6 rate-limiter memory is bounded', () => {
   it('gives every app limiter a key cap', async () => {
     const h = await setup();
     for (const l of Object.values(h.ctx.limits)) expect(l['maxKeys']).toBeLessThanOrEqual(100_000);
+  });
+});
+
+describe('SEC-7 WebSocket connection limits', () => {
+  class FakeSocket extends EventEmitter {
+    readonly OPEN = 1;
+    readyState = 1;
+    closedWith: number | null = null;
+    send() {}
+    close(code: number) {
+      if (this.closedWith !== null) return;
+      this.closedWith = code;
+      this.readyState = 3;
+      this.emit('close', code);
+    }
+  }
+  const sock = () => new FakeSocket() as unknown as WebSocket & FakeSocket;
+
+  it('keeps at most a few sockets per status link, closing the oldest', async () => {
+    const h = await setup();
+    await addManual(h, 'Emma Rivera', '555-201-8830');
+    const party = (await snap(h)).parties[0];
+    const sockets = Array.from({ length: 30 }, () => sock());
+    for (const ws of sockets) h.ctx.hub.addGuest(h.eventId, party.id, ws, '203.0.113.5');
+    const open = sockets.filter((s) => s.closedWith === null);
+    expect(open.length).toBeLessThanOrEqual(10);
+    expect(open).toContain(sockets.at(-1));
+  });
+
+  it('keeps at most a few sockets per host session', async () => {
+    const h = await setup();
+    const token = Object.values(h.cookies)[0];
+    const sockets = Array.from({ length: 20 }, () => sock());
+    for (const ws of sockets) h.ctx.hub.addHost(h.eventId, ws, token, '203.0.113.5');
+    expect(sockets.filter((s) => s.closedWith === null).length).toBeLessThanOrEqual(5);
+  });
+
+  it('caps concurrent sockets per client address', async () => {
+    const h = await setup();
+    const tokens: string[] = [];
+    for (let i = 0; i < 3; i++) tokens.push(await addManual(h, `Family ${i}`));
+    const sockets: FakeSocket[] = [];
+    for (let i = 0; i < 1100; i++) {
+      const ws = sock();
+      sockets.push(ws);
+      // Spread over parties so the per-link cap doesn't hide the per-address one.
+      h.ctx.hub.addGuest(h.eventId, `${tokens[i % 3]}`, ws, '203.0.113.5');
+    }
+    expect(sockets.filter((s) => s.closedWith === null).length).toBeLessThanOrEqual(30);
+    const many: FakeSocket[] = [];
+    for (let p = 0; p < 1100; p++) {
+      const ws = sock();
+      many.push(ws);
+      h.ctx.hub.addGuest(h.eventId, `party-${p}`, ws, '203.0.113.6');
+    }
+    const refused = many.filter((s) => s.closedWith === 4429).length;
+    expect(refused).toBeGreaterThan(0);
+    expect(many.length - refused).toBeLessThanOrEqual(1000);
+    // Another address is unaffected.
+    const other = sock();
+    h.ctx.hub.addGuest(h.eventId, tokens[0], other, '198.51.100.1');
+    expect(other.closedWith).toBeNull();
   });
 });

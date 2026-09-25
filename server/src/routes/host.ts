@@ -8,6 +8,7 @@ import type {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '../app.js';
 import { ServiceError } from '../errors.js';
+import { clientKey } from '../security.js';
 import { Sessions } from '../sessions.js';
 
 type Body = Record<string, unknown>;
@@ -170,7 +171,7 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
     });
 
     host.get<EventParams>('/ws/host/:id', { websocket: true }, (socket, req) => {
-      ctx.hub.addHost(req.params.id, socket, token(req, req.params.id)!);
+      ctx.hub.addHost(req.params.id, socket, token(req, req.params.id)!, clientKey(req.ip));
     });
   });
 }
