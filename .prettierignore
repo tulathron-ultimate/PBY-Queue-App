@@ -1,0 +1,9 @@
+node_modules
+dist
+dev-dist
+package-lock.json
+docs/design/mockups.html
+docs/screenshots
+test-results
+playwright-report
+shared/test/fixtures
