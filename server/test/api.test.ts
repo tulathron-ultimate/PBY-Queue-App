@@ -821,4 +821,38 @@ describe('robustness', () => {
     expect(by(garbage)).toMatchObject({ phone: null, phoneInvalidInput: 'ask at desk' });
     expect([by(dupA).phone, by(dupB).phone]).toEqual(['+15552018830', '+15552018830']);
   });
+
+  it('validates Twilio signatures and sets Secure cookies behind a tunnel with no PUBLIC_URL', async () => {
+    const h = await setup({
+      PUBLIC_URL: '',
+      TWILIO_ACCOUNT_SID: 'AC123',
+      TWILIO_AUTH_TOKEN: 'secret-token',
+      TWILIO_FROM: '+15550001111',
+    });
+    // cloudflared talks plain HTTP to the app and forwards the public host and scheme.
+    const proxied = { host: 'q.example.com', 'x-forwarded-proto': 'https' };
+    const login = await h.app.inject({
+      method: 'POST',
+      url: '/api/host/login',
+      headers: proxied,
+      payload: { eventId: h.eventId, pin: PIN },
+    });
+    expect(login.cookies[0]).toMatchObject({ secure: true, httpOnly: true, sameSite: 'Lax' });
+
+    const params = { From: '+15552018830', Body: 'STOP', To: '+15550001111' };
+    const post = (signedUrl: string) =>
+      h.app.inject({
+        method: 'POST',
+        url: '/sms/twilio/inbound?x=1',
+        headers: {
+          ...proxied,
+          'content-type': 'application/x-www-form-urlencoded',
+          'x-twilio-signature': twilioSignature('secret-token', signedUrl, params),
+        },
+        payload: new URLSearchParams(params).toString(),
+      });
+    expect((await post('https://q.example.com/sms/twilio/inbound?x=1')).statusCode).toBe(200);
+    expect((await post('http://q.example.com/sms/twilio/inbound?x=1')).statusCode).toBe(403);
+    expect((await post('https://evil.example/sms/twilio/inbound?x=1')).statusCode).toBe(403);
+  });
 });
