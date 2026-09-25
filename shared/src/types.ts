@@ -79,7 +79,6 @@ export interface EventSettings {
   smsName: string | null;
   date: string;
   upNextN: number;
-  minutesPerParty: number;
   smsMode: SmsMode;
   selfJoin: boolean;
   showNames: boolean;
@@ -100,7 +99,6 @@ export interface HostSnapshot {
   parties: HostParty[];
   pendingTexts: PendingText[];
   undo: { label: string; at: number } | null;
-  avgMinutes: number;
   twilioAvailable: boolean;
   serverTime: number;
 }
@@ -126,8 +124,6 @@ export interface GuestSnapshot {
     state: PartyState;
     arrived: boolean;
     position: number | null;
-    waitMinutes: number | null;
-    waitText: string | null;
     hasPhone: boolean;
   } | null;
   nowServing: GuestPartyRef | null;
@@ -143,7 +139,6 @@ export interface JoinInfo {
   open: boolean;
   selfJoin: boolean;
   lineLength: number;
-  waitText: string;
   smsMode: SmsMode;
   full: boolean;
 }

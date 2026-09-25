@@ -235,7 +235,6 @@ describe('queue flow (tap-to-send)', () => {
     ).json();
     expect(g2.nowServing).toEqual({ ticket: 1, name: 'Emma R.', isMe: false });
     expect(g2.me!.position).toBe(1);
-    expect(g2.me!.waitText).toBe('~3 min');
 
     // Okafor (no phone) checks in from the status page (G4)
     const arrive = await h.app.inject({
@@ -325,6 +324,26 @@ describe('queue flow (tap-to-send)', () => {
     expect(codes[10]).toBe(429);
   });
 
+  it('never predicts a wait time: no estimate in guest, join, host or text payloads', async () => {
+    // Owner decision: wait times vary too much, so the app shows positions only.
+    const h = await setup();
+    for (const n of ['Garcia Family', 'Nguyen Family', 'Smith Family', 'Okafor']) {
+      await addManual(h, n, '555-201-8830');
+    }
+    advance(5000);
+    await host(h, 'POST', '/call-next');
+    const s = await snap(h);
+    const guest = await h.app.inject({ method: 'GET', url: `/api/status/${s.parties[3].token}` });
+    const join = await h.app.inject({ method: 'GET', url: `/api/join/${h.code}` });
+    expect(guest.json().me).toMatchObject({ position: 3 });
+    for (const body of [guest.body, join.body, JSON.stringify(s)]) {
+      expect(body).not.toMatch(/wait(Text|Minutes)|avgMinutes|minutesPerParty|\bmin\b|minute/i);
+    }
+    const joinText = s.pendingTexts.find((t) => t.template === 'join')!;
+    expect(joinText.body).toMatch(/you're #\d+ in line\. Track live: https:/);
+    expect(joinText.body).not.toMatch(/min|~/);
+  });
+
   it('returns a generic 404 for unknown status tokens', async () => {
     const h = await setup();
     const r = await h.app.inject({ method: 'GET', url: '/api/status/AAAAAAAAAAAA' });
@@ -406,6 +425,10 @@ describe('retention', () => {
     const h = await setup();
     const id = await addManual(h, 'Emma Rivera', '555-201-8830');
     const token = (await snap(h)).parties.find((p) => p.id === id)!.token;
+    advance(5000);
+    await host(h, 'POST', '/call-next');
+    advance(120_000);
+    await host(h, 'POST', '/complete');
     await host(h, 'POST', '/close');
     // Closing signs out every device
     expect((await host(h, 'GET', '')).statusCode).toBe(401);
@@ -421,6 +444,12 @@ describe('retention', () => {
     const r = runRetention(h.ctx.db, now(), { retentionDays: 7, autoCloseHours: 12, purge: true });
     expect(r.purged).toEqual([h.eventId]);
     expect(h.ctx.db.prepare('SELECT COUNT(*) n FROM parties').get()).toEqual({ n: 0 });
+    // Aggregates survive: 1 served, and the photo took 2 min (a record, not an estimate).
+    expect(
+      h.ctx.db
+        .prepare('SELECT served_count, avg_service_ms FROM events WHERE id = ?')
+        .get(h.eventId),
+    ).toEqual({ served_count: 1, avg_service_ms: 120_000 });
     expect((await h.app.inject({ method: 'GET', url: `/api/status/${token}` })).statusCode).toBe(
       404,
     );
@@ -774,7 +803,7 @@ describe('robustness', () => {
     expect(res.json().added).toBe(300);
     const last = (await snap(h)).parties.at(-1)!;
     const status = (await h.app.inject({ method: 'GET', url: `/api/status/${last.token}` })).json();
-    expect(status.me).toMatchObject({ ticket: 300, position: 300, waitText: '90+ min' });
+    expect(status.me).toMatchObject({ ticket: 300, position: 300 });
     expect(JSON.stringify(status)).not.toContain('555');
     for (let i = 0; i < 300; i++) {
       advance(60_000);

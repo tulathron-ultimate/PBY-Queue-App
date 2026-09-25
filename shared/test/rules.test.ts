@@ -2,13 +2,6 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
-  addSample,
-  averageMinutes,
-  estimateWaitMinutes,
-  formatWait,
-  waitForSms,
-} from '../src/estimate.js';
-import {
   annotateDuplicates,
   hasErrors,
   matchHeaders,
@@ -79,45 +72,42 @@ describe('phone normalization (§2.9)', () => {
   });
 });
 
-describe('wait estimate (§2.3)', () => {
-  it('uses 3 min per party before any data', () => {
-    expect(averageMinutes([])).toBe(3);
-    expect(estimateWaitMinutes(4, averageMinutes([]))).toBe(12);
-  });
-
-  it('averages the last 5 valid samples and ignores misfires and breaks', () => {
-    let s: number[] = [];
-    for (const ms of [5_000, 60_000, 120_000, 30 * 60_000, 180_000, 60_000, 60_000, 60_000]) {
-      s = addSample(s, ms);
-    }
-    expect(s).toEqual([120_000, 180_000, 60_000, 60_000, 60_000]);
-    expect(averageMinutes(s)).toBeCloseTo(1.6);
-    expect(estimateWaitMinutes(3, 1.6)).toBe(5);
-  });
-
-  it('clamps to 1–15 minutes and formats', () => {
-    expect(averageMinutes([16_000])).toBe(1);
-    expect(averageMinutes([], 40)).toBe(15);
-    expect(formatWait(0)).toBe('Any minute now');
-    expect(formatWait(12)).toBe('~12 min');
-    expect(formatWait(91)).toBe('90+ min');
-    expect(waitForSms(120)).toBe('90+');
-  });
-});
-
 describe('templates (§2.4)', () => {
   const link = 'https://pby.example.com/s/AbCdEfGhIjKl';
 
   it('ships GSM-7 defaults that fit within their documented max lengths', () => {
-    const max = { event: 'X'.repeat(20), name: 'Y'.repeat(12), pos: 999, wait: '90+', link };
+    const max = { event: 'X'.repeat(20), name: 'Y'.repeat(12), pos: 999, link };
     for (const key of Object.keys(TEMPLATES) as (keyof typeof TEMPLATES)[]) {
       expect(isGsm7(renderSms(key, max))).toBe(true);
     }
-    expect(renderSms('join', max).length).toBeLessThanOrEqual(125);
-    expect(renderSms('join', max, { stopFooter: true }).length).toBeLessThanOrEqual(148);
+    expect(renderSms('join', max).length).toBeLessThanOrEqual(114);
+    expect(renderSms('join', max, { stopFooter: true }).length).toBeLessThanOrEqual(137);
     expect(renderSms('up_next', max).length).toBeLessThanOrEqual(140);
     expect(renderSms('your_turn', max).length).toBeLessThanOrEqual(82);
     expect(renderSms('skipped', max).length).toBeLessThanOrEqual(146);
+  });
+
+  it('carries no wait time or ETA, and stays under 160 even with a long link and STOP', () => {
+    // Owner decision: no wait-time estimates anywhere, because the pace varies too much.
+    const longest = { event: 'X'.repeat(20), name: 'Y'.repeat(12), pos: 999, ticket: 999 };
+    const link48 = 'https://q.example-long.com/s/' + 'A'.repeat(12) + 'xxxxxxx';
+    for (const [key, template] of Object.entries(TEMPLATES)) {
+      expect(template, key).not.toMatch(/wait|\bmin\b|minute|\beta\b/i);
+      for (const stopFooter of [false, true]) {
+        const text = renderSms(
+          key as keyof typeof TEMPLATES,
+          { ...longest, link: link48 },
+          {
+            stopFooter,
+          },
+        );
+        expect(text.length, `${key} ${stopFooter}`).toBeLessThanOrEqual(160);
+        expect(text, key).toContain(link48.slice(0, key === 'your_turn' ? 0 : 48));
+      }
+    }
+    expect(renderSms('join', { event: 'Santa', name: 'Leo', pos: 4, link })).toBe(
+      `Santa: Leo, you're #4 in line. Track live: ${link}`,
+    );
   });
 
   it('renders placeholders with the first name and a transliterated event', () => {

@@ -17,7 +17,6 @@ export function CreateEvent() {
   const [showPin, setShowPin] = useState(false);
   const [smsMode, setSmsMode] = useState<'tap' | 'twilio'>('tap');
   const [upNextN, setUpNextN] = useState<number>(DEFAULTS.upNextN);
-  const [minutes, setMinutes] = useState<number>(DEFAULTS.minutesPerParty);
   const [selfJoin, setSelfJoin] = useState(true);
   const [showNames, setShowNames] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -48,7 +47,6 @@ export function CreateEvent() {
           pin,
           smsMode,
           upNextN,
-          minutesPerParty: minutes,
           selfJoin,
           showNames,
         },
@@ -176,17 +174,6 @@ export function CreateEvent() {
             <span style={{ fontWeight: 600 }}>spots away</span>
           </div>
           <div className="help">They get an "Up next" text at this point. 0 turns it off.</div>
-        </div>
-        <div className="field">
-          <span className="flabel">Minutes per party (estimate)</span>
-          <Stepper
-            value={minutes}
-            min={LIMITS.minutesPerPartyMin}
-            max={LIMITS.minutesPerPartyMax}
-            onChange={setMinutes}
-            label="Minutes per party"
-          />
-          <div className="help">Used until we learn your real pace.</div>
         </div>
         <Toggle label="Guests can join by QR code" checked={selfJoin} onChange={setSelfJoin} />
         <Toggle

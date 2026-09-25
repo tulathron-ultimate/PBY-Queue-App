@@ -321,7 +321,6 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
           <button type="button" onClick={() => setShowDone((v) => !v)} aria-pressed={showDone}>
             {doneCount} done
           </button>
-          <span>· ~{Math.round(snap.avgMinutes * 10) / 10} min each</span>
         </div>
 
         {serving ? (

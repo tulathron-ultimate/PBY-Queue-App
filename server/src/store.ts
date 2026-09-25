@@ -18,7 +18,6 @@ export interface EventRecord {
   date: string;
   pinHash: string;
   upNextN: number;
-  minutesPerParty: number;
   smsMode: SmsMode;
   selfJoin: boolean;
   showNames: boolean;
@@ -26,7 +25,6 @@ export interface EventRecord {
   status: EventStatus;
   publicUrl: string;
   nextTicket: number;
-  samples: number[];
   createdAt: number;
   lastActionAt: number;
   lastCallAt: number | null;
@@ -72,7 +70,6 @@ function toEvent(r: any): EventRecord {
     date: r.date,
     pinHash: r.pin_hash,
     upNextN: r.up_next_n,
-    minutesPerParty: r.minutes_per_party,
     smsMode: r.sms_mode,
     selfJoin: !!r.self_join,
     showNames: !!r.show_names,
@@ -80,7 +77,6 @@ function toEvent(r: any): EventRecord {
     status: r.status,
     publicUrl: r.public_url,
     nextTicket: r.next_ticket,
-    samples: JSON.parse(r.samples),
     createdAt: r.created_at,
     lastActionAt: r.last_action_at,
     lastCallAt: r.last_call_at,
@@ -147,11 +143,13 @@ export class Store {
   insertEvent(e: EventRecord): void {
     this.db
       .prepare(
+        // minutes_per_party and samples fed the wait-time estimate, which was removed by the
+        // owner's decision. The columns stay (NOT NULL) for existing databases but are unused.
         `INSERT INTO events (id, code, name, sms_name, date, pin_hash, up_next_n, minutes_per_party,
-          sms_mode, self_join, show_names, host_consent, status, public_url, next_ticket, samples,
+          sms_mode, self_join, show_names, host_consent, status, public_url, next_ticket,
           created_at, last_action_at)
-         VALUES (@id, @code, @name, @smsName, @date, @pinHash, @upNextN, @minutesPerParty,
-          @smsMode, @selfJoin, @showNames, @hostConsent, @status, @publicUrl, @nextTicket, @samples,
+         VALUES (@id, @code, @name, @smsName, @date, @pinHash, @upNextN, 0,
+          @smsMode, @selfJoin, @showNames, @hostConsent, @status, @publicUrl, @nextTicket,
           @createdAt, @lastActionAt)`,
       )
       .run({
@@ -159,7 +157,6 @@ export class Store {
         selfJoin: e.selfJoin ? 1 : 0,
         showNames: e.showNames ? 1 : 0,
         hostConsent: e.hostConsent ? 1 : 0,
-        samples: JSON.stringify(e.samples),
       });
   }
 
@@ -169,14 +166,12 @@ export class Store {
       smsName: 'sms_name',
       date: 'date',
       upNextN: 'up_next_n',
-      minutesPerParty: 'minutes_per_party',
       smsMode: 'sms_mode',
       selfJoin: 'self_join',
       showNames: 'show_names',
       hostConsent: 'host_consent',
       status: 'status',
       nextTicket: 'next_ticket',
-      samples: 'samples',
       lastActionAt: 'last_action_at',
       lastCallAt: 'last_call_at',
       closedAt: 'closed_at',
@@ -188,15 +183,7 @@ export class Store {
       const col = columns[key];
       if (!col) continue;
       sets.push(`${col} = ?`);
-      values.push(
-        typeof value === 'boolean'
-          ? value
-            ? 1
-            : 0
-          : key === 'samples'
-            ? JSON.stringify(value)
-            : value,
-      );
+      values.push(typeof value === 'boolean' ? (value ? 1 : 0) : value);
     }
     if (!sets.length) return;
     this.db.prepare(`UPDATE events SET ${sets.join(', ')} WHERE id = ?`).run(...values, id);

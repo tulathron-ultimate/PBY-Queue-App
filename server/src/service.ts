@@ -5,7 +5,6 @@
  */
 import {
   addParties as addToQueue,
-  addSample,
   callNext as queueCallNext,
   clampInt,
   completeCurrent,
@@ -62,7 +61,6 @@ export interface CreateEventInput {
   date?: string;
   pin: string;
   upNextN?: number;
-  minutesPerParty?: number;
   smsMode?: SmsMode;
   selfJoin?: boolean;
   showNames?: boolean;
@@ -79,7 +77,7 @@ export interface AddOptions {
   consent?: boolean;
 }
 
-type MutationResult = QueueResult<PartyRecord> & { samples?: number[]; extraEffects?: SmsEffect[] };
+type MutationResult = QueueResult<PartyRecord> & { extraEffects?: SmsEffect[] };
 
 const UNDO_KEEP = 20;
 
@@ -173,12 +171,6 @@ export class QueueService {
         : new Date(now).toISOString().slice(0, 10),
       pinHash: await hashPin(String(input.pin)),
       upNextN: clampInt(input.upNextN, LIMITS.upNextMin, LIMITS.upNextMax, DEFAULTS.upNextN),
-      minutesPerParty: clampInt(
-        input.minutesPerParty,
-        LIMITS.minutesPerPartyMin,
-        LIMITS.minutesPerPartyMax,
-        DEFAULTS.minutesPerParty,
-      ),
       smsMode,
       selfJoin: input.selfJoin ?? true,
       showNames: input.showNames ?? true,
@@ -186,7 +178,6 @@ export class QueueService {
       status: 'open',
       publicUrl: this.cfg.publicUrl ?? origin.replace(/\/+$/, ''),
       nextTicket: 1,
-      samples: [],
       createdAt: now,
       lastActionAt: now,
       lastCallAt: null,
@@ -384,8 +375,8 @@ export class QueueService {
   /* --------------------------------------------------------------- mutations */
 
   /**
-   * Runs `fn` against the current parties in a transaction, persists changes, records the
-   * service-time sample, creates texts, and pushes an Undo entry when `undoLabel` is given.
+   * Runs `fn` against the current parties in a transaction, persists changes, creates texts,
+   * and pushes an Undo entry when `undoLabel` is given.
    */
   private mutate(
     eventId: string,
@@ -413,8 +404,6 @@ export class QueueService {
         else if (queueChanged(prev, p)) this.store.updatePartyQueue(p);
       }
       this.cancelStaleTexts(eventId, r.parties);
-      const samples =
-        r.samples ?? (r.sampleMs !== null ? addSample(event.samples, r.sampleMs) : event.samples);
       const texts = this.createTexts(
         event,
         r.parties,
@@ -422,18 +411,18 @@ export class QueueService {
         now,
       );
       twilioIds = texts.twilioIds;
-      this.store.updateEvent(eventId, { samples, lastActionAt: now });
+      this.store.updateEvent(eventId, { lastActionAt: now });
       if (undoLabel) {
         this.db
           .prepare(
+            // `samples` (the old wait-estimate data) is unused; the column is NOT NULL.
             `INSERT INTO undo_stack (event_id, label, snapshot, samples, sms_ids, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, '[]', ?, ?)`,
           )
           .run(
             eventId,
             undoLabel,
             JSON.stringify(takeSnapshot(before)),
-            JSON.stringify(event.samples),
             JSON.stringify(texts.ids),
             now,
           );
@@ -543,8 +532,7 @@ export class QueueService {
       const row = this.db
         .prepare('SELECT * FROM undo_stack WHERE event_id = ? ORDER BY id DESC LIMIT 1')
         .get(eventId) as
-        | { id: number; label: string; snapshot: string; samples: string; sms_ids: string }
-        | undefined;
+        { id: number; label: string; snapshot: string; sms_ids: string } | undefined;
       if (!row) throw new ServiceError(409, 'nothing_to_undo', 'Nothing to undo.');
       label = row.label;
       const alreadyTexted = new Set<string>();
@@ -556,8 +544,7 @@ export class QueueService {
       }
       this.db.prepare('DELETE FROM undo_stack WHERE id = ?').run(row.id);
       const snapshot = JSON.parse(row.snapshot) as QueueSnapshot;
-      const r = restoreSnapshot(parties, snapshot, event.upNextN, alreadyTexted);
-      return { ...r, samples: JSON.parse(row.samples) as number[] };
+      return restoreSnapshot(parties, snapshot, event.upNextN, alreadyTexted);
     });
     return { label };
   }
@@ -740,7 +727,7 @@ export class QueueService {
             : party.state === 'skipped' || party.state === 'no_show'
               ? 'skipped'
               : 'join';
-      return { parties, effects: [{ partyId, template }], sampleMs: null };
+      return { parties, effects: [{ partyId, template }] };
     });
   }
 
@@ -775,14 +762,6 @@ export class QueueService {
       update.smsName = text(patch.smsName, LIMITS.smsEventNameMax) || null;
     if (patch.date !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(patch.date))
       update.date = patch.date;
-    if (patch.minutesPerParty !== undefined) {
-      update.minutesPerParty = clampInt(
-        patch.minutesPerParty,
-        LIMITS.minutesPerPartyMin,
-        LIMITS.minutesPerPartyMax,
-        event.minutesPerParty,
-      );
-    }
     if (patch.smsMode !== undefined) {
       if (patch.smsMode === 'twilio' && !this.twilio) {
         throw new ServiceError(
@@ -803,10 +782,7 @@ export class QueueService {
     this.store.updateEvent(eventId, update);
     if (newN !== event.upNextN) {
       this.store.updateEvent(eventId, { upNextN: newN });
-      this.mutate(eventId, null, (parties) => ({
-        ...recomputeUpNext(parties, newN),
-        sampleMs: null,
-      }));
+      this.mutate(eventId, null, (parties) => recomputeUpNext(parties, newN));
     } else {
       this.onChange(eventId);
     }

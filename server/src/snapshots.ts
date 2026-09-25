@@ -1,17 +1,11 @@
 /** Builds the payloads sent to host and guest pages. Guest payloads are privacy-filtered. */
 import {
-  averageMinutes,
-  estimateWaitMinutes,
   findNowServing,
-  formatWait,
   orderActive,
-  partiesAheadForNewcomer,
-  partiesAheadForWait,
   positionOf,
   publicName,
   renderSms,
   smsEventName,
-  waitForSms,
   type GuestPartyRef,
   type GuestSnapshot,
   type HostEventInfo,
@@ -33,10 +27,6 @@ export function joinLink(event: EventRecord): string {
   return `${event.publicUrl}/j/${event.code}`;
 }
 
-export function avgMinutesFor(event: EventRecord): number {
-  return averageMinutes(event.samples, event.minutesPerParty);
-}
-
 export function renderBody(
   event: EventRecord,
   parties: readonly PartyRecord[],
@@ -45,15 +35,12 @@ export function renderBody(
   stopFooter: boolean,
 ): string {
   const pos = positionOf(parties, party.id);
-  const ahead = partiesAheadForWait(parties, party.id) ?? partiesAheadForNewcomer(parties);
-  const wait = estimateWaitMinutes(ahead, avgMinutesFor(event));
   return renderSms(
     template,
     {
       event: smsEventName(event.name, event.smsName),
       name: party.name,
       pos: pos ?? '',
-      wait: waitForSms(wait),
       ticket: party.ticket,
       link: statusLink(event, party),
     },
@@ -69,7 +56,6 @@ export function hostEventInfo(event: EventRecord): HostEventInfo {
     smsName: event.smsName,
     date: event.date,
     upNextN: event.upNextN,
-    minutesPerParty: event.minutesPerParty,
     smsMode: event.smsMode,
     selfJoin: event.selfJoin,
     showNames: event.showNames,
@@ -145,7 +131,6 @@ export function buildHostSnapshot(input: HostSnapshotInput): HostSnapshot {
     parties: hostParties,
     pendingTexts,
     undo: input.undo,
-    avgMinutes: avgMinutesFor(event),
     twilioAvailable: input.twilioAvailable,
     serverTime: input.now,
   };
@@ -172,8 +157,6 @@ export function buildGuestSnapshot(
   };
   if (ended) return { ...base, me: null, nowServing: null, comingUp: [] };
   const position = positionOf(parties, party.id);
-  const ahead = partiesAheadForWait(parties, party.id);
-  const waitMinutes = ahead === null ? null : estimateWaitMinutes(ahead, avgMinutesFor(event));
   const serving = findNowServing(parties);
   const comingUp = orderActive(parties)
     .filter((p) => p.arrived)
@@ -188,8 +171,6 @@ export function buildGuestSnapshot(
       state: party.state,
       arrived: party.arrived,
       position,
-      waitMinutes,
-      waitText: waitMinutes === null ? null : formatWait(waitMinutes),
       hasPhone: !!party.phone && !party.noTexts,
     },
     nowServing: serving ? ref(event, serving, party.id) : null,
@@ -202,14 +183,12 @@ export function buildJoinInfo(
   parties: readonly PartyRecord[],
   twilioActive: boolean,
 ): JoinInfo {
-  const ahead = partiesAheadForNewcomer(parties);
   const active = parties.filter((p) => p.state === 'waiting' || p.state === 'up_next').length;
   return {
     eventName: event.name,
     open: event.status === 'open',
     selfJoin: event.selfJoin,
     lineLength: orderActive(parties).filter((p) => p.arrived).length,
-    waitText: formatWait(estimateWaitMinutes(ahead, avgMinutesFor(event))),
     smsMode: twilioActive ? 'twilio' : 'tap',
     full: active >= LIMITS.activePartiesMax,
   };

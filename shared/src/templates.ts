@@ -2,7 +2,7 @@
 import type { TemplateKey } from './types.js';
 
 export const TEMPLATES: Readonly<Record<TemplateKey, string>> = {
-  join: "{event}: {name}, you're #{pos} in line (~{wait} min). Track live: {link}",
+  join: "{event}: {name}, you're #{pos} in line. Track live: {link}",
   up_next: "{event}: {name}, you're up next! Please head to the photo area now. Status: {link}",
   your_turn: "{event}: {name}, it's your turn! Please come to the camera now.",
   skipped:
@@ -104,13 +104,12 @@ export interface TemplateVars {
   event: string;
   name: string;
   pos?: number | string;
-  wait?: number | string;
   ticket?: number | string;
   link?: string;
 }
 
 function fill(template: string, v: Required<TemplateVars>): string {
-  return template.replace(/\{(event|name|pos|wait|ticket|link)\}/g, (_, key: keyof TemplateVars) =>
+  return template.replace(/\{(event|name|pos|ticket|link)\}/g, (_, key: keyof TemplateVars) =>
     String(v[key]),
   );
 }
@@ -131,7 +130,6 @@ export function renderSms(
     event: toSmsSafe(vars.event).slice(0, SMS_EVENT_MAX).trim(),
     name: smsFirstName(vars.name),
     pos: vars.pos ?? '',
-    wait: vars.wait ?? '',
     ticket: vars.ticket ?? '',
     link: vars.link ?? '',
   };

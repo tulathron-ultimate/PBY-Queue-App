@@ -8,6 +8,7 @@ import {
   tableFromWorkbook,
 } from '../src/import/spreadsheet';
 import { parseImportTable } from '@pby/shared';
+import { aheadText } from '../src/pages/guest/statusText';
 import { isIos, smsUri } from '../src/platform/sms';
 
 describe('sms adapter (S2)', () => {
@@ -88,5 +89,16 @@ describe('spreadsheet import (A2)', () => {
     await expect(parseSpreadsheetFile(big)).rejects.toThrow(/too big/);
     const vcf = new File([new Uint8Array(31 * 1024 * 1024)], 'huge.vcf');
     await expect(parseVcfFile(vcf)).rejects.toThrow(/too big/);
+  });
+});
+
+describe('guest status lines (G2)', () => {
+  it('shows how many are ahead, never a wait time', () => {
+    expect(aheadText(4)).toBe('3 ahead of you');
+    expect(aheadText(2)).toBe('1 ahead of you');
+    expect(aheadText(1)).toBe('Nobody ahead of you');
+    expect(aheadText(0)).toBeNull();
+    expect(aheadText(null)).toBeNull();
+    for (const p of [1, 5, 90, 300]) expect(aheadText(p)).not.toMatch(/min|wait|~/i);
   });
 });
