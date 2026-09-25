@@ -21,8 +21,26 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
 
   const token = (req: FastifyRequest, id: string) => req.cookies[Sessions.cookieName(id)];
 
+  /**
+   * WebSocket upgrades are not covered by CORS or the JSON-only CSRF rule, so a page on another
+   * site could open the host feed with the host's cookie. Browsers always send Origin on them.
+   */
+  function crossSiteUpgrade(req: FastifyRequest): boolean {
+    if (String(req.headers.upgrade ?? '').toLowerCase() !== 'websocket') return false;
+    const origin = req.headers.origin;
+    if (!origin) return false; // not a browser, so no ambient cookie to abuse
+    try {
+      return new URL(origin).host !== req.host;
+    } catch {
+      return true;
+    }
+  }
+
   /** Host auth: a valid session cookie for this event. */
   async function requireHost(req: FastifyRequest<EventParams>, reply: FastifyReply) {
+    if (crossSiteUpgrade(req)) {
+      return reply.code(403).send({ error: 'forbidden', message: 'Cross-site request.' });
+    }
     if (!service.sessions.valid(req.params.id, token(req, req.params.id))) {
       ctx.clearHostCookie(reply, req.params.id);
       return reply.code(401).send({ error: 'unauthorized', message: 'Enter the event PIN.' });

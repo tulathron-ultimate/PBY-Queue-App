@@ -535,4 +535,26 @@ describe('QA regressions', () => {
     expect(await closed).toBe(4401);
     expect(phones).not.toContain('+15552018830');
   });
+
+  it('refuses a cross-site host WebSocket even with a valid session cookie', async () => {
+    const h = await setup();
+    await h.app.listen({ port: 0, host: '127.0.0.1' });
+    const { port } = h.app.server.address() as { port: number };
+    const cookie = Object.entries(h.cookies)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('; ');
+    const open = (origin: string) =>
+      new Promise<number | 'open'>((resolve) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/host/${h.eventId}`, {
+          headers: { cookie, origin },
+        });
+        ws.on('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+        ws.on('open', () => {
+          ws.close();
+          resolve('open');
+        });
+      });
+    expect(await open('https://evil.example')).toBe(403);
+    expect(await open(`http://127.0.0.1:${port}`)).toBe('open');
+  });
 });
