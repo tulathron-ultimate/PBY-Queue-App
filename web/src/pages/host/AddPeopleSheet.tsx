@@ -6,10 +6,9 @@ import {
   downloadTemplate,
   parsedFromContacts,
   parseSpreadsheetFile,
-  parseVcfText,
+  parseVcfFile,
 } from '../../import/spreadsheet';
 import { contactPickerSupported, pickContacts } from '../../platform/contacts';
-import { readTextFile } from '../../platform/files';
 import { navigate } from '../../router';
 import type { HostContext } from './HostEvent';
 
@@ -44,7 +43,7 @@ export function AddPeopleSheet({
     e.target.value = '';
     if (!file) return;
     try {
-      const parsed = parseVcfText(await readTextFile(file));
+      const parsed = await parseVcfFile(file);
       if (!parsed.rows.length) throw new Error('No contacts found in it.');
       onImport({
         rows: parsed.rows,

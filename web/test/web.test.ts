@@ -1,7 +1,12 @@
 import { TEMPLATE_EXAMPLE_ROWS, TEMPLATE_HEADERS } from '@pby/shared';
 import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
-import { parseVcfText, tableFromWorkbook } from '../src/import/spreadsheet';
+import {
+  parseSpreadsheetFile,
+  parseVcfFile,
+  parseVcfText,
+  tableFromWorkbook,
+} from '../src/import/spreadsheet';
 import { parseImportTable } from '@pby/shared';
 import { isIos, smsUri } from '../src/platform/sms';
 
@@ -59,5 +64,29 @@ describe('spreadsheet import (A2)', () => {
       'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Emma Rivera\r\nTEL;type=CELL:555-201-8830\r\nEND:VCARD\r\n';
     const parsed = parseVcfText(vcf);
     expect(parsed.rows[0]).toMatchObject({ name: 'Emma Rivera', size: 1, phone: '+15552018830' });
+  });
+
+  it('reads only as many rows and columns as an import can use (hostile files)', () => {
+    const csv = ['Name', ...Array.from({ length: 5000 }, (_, i) => `P ${i}`)].join('\n');
+    const table = tableFromWorkbook(XLSX, csv, true);
+    expect(table.length).toBeLessThanOrEqual(600);
+    expect(parseImportTable(table).truncated).toBe(true);
+
+    const ws = XLSX.utils.aoa_to_sheet([['Name'], ['Wide']]);
+    ws['XFD2'] = { t: 's', v: 'far away' };
+    ws['!ref'] = 'A1:XFD2';
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Queue');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
+    const wide = tableFromWorkbook(XLSX, buf, false);
+    expect(Math.max(...wide.map((r) => r.length))).toBeLessThanOrEqual(50);
+    expect(parseImportTable(wide).rows[0].name).toBe('Wide');
+  });
+
+  it('refuses oversized files before parsing them', async () => {
+    const big = new File([new Uint8Array(6 * 1024 * 1024)], 'huge.xlsx');
+    await expect(parseSpreadsheetFile(big)).rejects.toThrow(/too big/);
+    const vcf = new File([new Uint8Array(31 * 1024 * 1024)], 'huge.vcf');
+    await expect(parseVcfFile(vcf)).rejects.toThrow(/too big/);
   });
 });

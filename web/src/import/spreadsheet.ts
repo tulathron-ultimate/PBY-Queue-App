@@ -1,5 +1,6 @@
 /** Excel/CSV via SheetJS (loaded on demand so the host dashboard stays light). */
 import {
+  LIMITS,
   parseImportTable,
   parseVCards,
   TEMPLATE_EXAMPLE_ROWS,
@@ -8,9 +9,26 @@ import {
   validateDraft,
   type ParsedImport,
 } from '@pby/shared';
-import { downloadBlob } from '../platform/files';
+import { downloadBlob, readTextFile } from '../platform/files';
 
 type XLSXModule = typeof import('xlsx');
+
+/**
+ * Hostile-file limits. A 500-row roster is tens of KB; an iPhone contacts export with photos
+ * is roughly 100 KB per contact. Parsing happens on the host's phone, so an oversized or
+ * zip-bombed file would freeze the dashboard mid-event.
+ */
+export const MAX_SPREADSHEET_BYTES = 5 * 1024 * 1024;
+export const MAX_VCF_BYTES = 25 * 1024 * 1024;
+/** Header + 500 rows + the template's example rows + slack for blank rows. */
+const MAX_SHEET_ROWS = LIMITS.importRowsMax + 20;
+const MAX_SHEET_COLS = 50;
+
+function checkSize(file: File, max: number): void {
+  if (file.size > max) {
+    throw new Error(`The file is too big (limit ${Math.round(max / 1024 / 1024)} MB).`);
+  }
+}
 
 /** Reads the `Queue` sheet (or the first sheet) into a 2D table of strings. */
 export function tableFromWorkbook(
@@ -20,22 +38,32 @@ export function tableFromWorkbook(
 ): unknown[][] {
   const wb =
     typeof data === 'string'
-      ? XLSX.read(data.replace(/^\uFEFF/, ''), { type: 'string', raw: false })
-      : XLSX.read(new Uint8Array(data), { type: 'array', raw: isCsv });
+      ? XLSX.read(data.replace(/^\uFEFF/, ''), {
+          type: 'string',
+          raw: false,
+          sheetRows: MAX_SHEET_ROWS,
+        })
+      : XLSX.read(new Uint8Array(data), { type: 'array', raw: isCsv, sheetRows: MAX_SHEET_ROWS });
   const name =
     wb.SheetNames.find((n) => n.toLowerCase() === TEMPLATE_SHEET_NAME.toLowerCase()) ??
     wb.SheetNames[0];
   const sheet = wb.Sheets[name];
-  if (!sheet) return [];
+  if (!sheet?.['!ref']) return [];
+  // A sheet can claim a range up to column XFD; the import only needs the first few columns.
+  const range = XLSX.utils.decode_range(sheet['!ref']);
+  range.e.c = Math.min(range.e.c, range.s.c + MAX_SHEET_COLS - 1);
+  range.e.r = Math.min(range.e.r, range.s.r + MAX_SHEET_ROWS - 1);
   return XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     raw: false,
     defval: '',
     blankrows: false,
+    range,
   });
 }
 
 export async function parseSpreadsheetFile(file: File): Promise<ParsedImport> {
+  checkSize(file, MAX_SPREADSHEET_BYTES);
   const XLSX = await import('xlsx');
   const isCsv = /\.csv$/i.test(file.name) || file.type === 'text/csv';
   const data = isCsv
@@ -69,6 +97,11 @@ export function parsedFromContacts(
 
 export function parseVcfText(text: string): ParsedImport {
   return parsedFromContacts(parseVCards(text));
+}
+
+export async function parseVcfFile(file: File): Promise<ParsedImport> {
+  checkSize(file, MAX_VCF_BYTES);
+  return parseVcfText(await readTextFile(file));
 }
 
 export async function downloadTemplate(kind: 'xlsx' | 'csv'): Promise<void> {
