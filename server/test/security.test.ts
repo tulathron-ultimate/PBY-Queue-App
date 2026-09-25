@@ -404,3 +404,32 @@ describe('SEC-8 names cannot carry bidi overrides or invisible characters', () =
     expect((await snap(h)).parties[0].name).toBe('Zoë 👨\u200D👩\u200D👧 Ñúñez');
   });
 });
+
+describe('SEC-9 request bodies are sized per route', () => {
+  it('refuses large bodies on public routes but still takes a full 500-row import', async () => {
+    const h = await setup();
+    const big = { name: 'Emma', phone: '', padding: 'x'.repeat(200 * 1024) };
+    for (const url of [`/api/join/${h.code}`, '/api/host/login', '/api/events']) {
+      const r = await h.app.inject({ method: 'POST', url, payload: big });
+      expect(r.statusCode, url).toBe(413);
+    }
+    const rows = Array.from({ length: 500 }, (_, i) => ({
+      name: `Family Number ${i} With A Long Name`.slice(0, 40),
+      phone: `555-201-${String(1000 + i).padStart(4, '0')}`,
+      size: 20,
+      members: Array.from({ length: 20 }, (_, m) => `Member Name ${m} ${'y'.repeat(20)}`),
+      group: 'U10 Hawks',
+      notes: 'n'.repeat(200),
+    }));
+    // Without a session the big body is refused before it is parsed.
+    const anon = await h.app.inject({
+      method: 'POST',
+      url: `/api/host/events/${h.eventId}/import`,
+      payload: { rows },
+    });
+    expect(anon.statusCode).toBe(401);
+    const r = await host(h, 'POST', '/import', { rows, consentConfirmed: true });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().added).toBe(500);
+  });
+});

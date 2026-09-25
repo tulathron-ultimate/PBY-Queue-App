@@ -123,7 +123,9 @@ export async function buildApp(
       typeof cfg.trustProxy === 'number'
         ? (_addr: string, hop: number) => hop < (cfg.trustProxy as number)
         : cfg.trustProxy,
-    bodyLimit: 2 * 1024 * 1024,
+    // SEC-9: small by default, so anonymous routes (join, login, status) cannot be made to parse
+    // megabytes of JSON per request; only the host import takes large bodies.
+    bodyLimit: 64 * 1024,
     logger: {
       level: cfg.logLevel,
       serializers: {
