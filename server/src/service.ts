@@ -129,6 +129,16 @@ export class QueueService {
       setMeta(db, 'optout_salt', salt);
     }
     this.optOutSalt = salt;
+    // Twilio texts still `sending` belong to a dispatch that died with the previous process.
+    // Twilio may or may not have them, so don't resend blindly: mark them failed, which shows
+    // the host a warning and lets them use "Text now".
+    const interrupted = db
+      .prepare(
+        `UPDATE sms_log SET status = 'failed', error = 'interrupted', updated_at = ?
+         WHERE status = 'sending'`,
+      )
+      .run(now()).changes;
+    if (interrupted) log.warn({ count: interrupted }, 'texts interrupted by a restart');
   }
 
   get twilioAvailable(): boolean {

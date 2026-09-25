@@ -1,5 +1,8 @@
 import type { GuestSnapshot, HostSnapshot } from '@pby/shared';
 import type { FastifyInstance } from 'fastify';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { buildApp, type AppContext } from '../src/app.js';
@@ -629,5 +632,41 @@ describe('QA regressions', () => {
       payload: { adminPassword: placeholder, name: 'X', pin: PIN },
     });
     expect(res.json().error).toBe('admin_not_configured');
+  });
+
+  it('marks Twilio texts interrupted by a restart as failed so the host can resend', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pby-qa-'));
+    const env = {
+      DATABASE_PATH: join(dir, 'q.db'),
+      TWILIO_ACCOUNT_SID: 'AC123',
+      TWILIO_AUTH_TOKEN: 'secret-token',
+      TWILIO_FROM: '+15550001111',
+    };
+    const h = await setup(env);
+    const id = await addManual(h, 'Emma Rivera', '555-201-8830', { sendJoinText: false });
+    await h.ctx.service.pendingDispatch;
+    // The process dies after queueing a text but before Twilio answered.
+    const smsId = h.ctx.service.store.insertSms({
+      eventId: h.eventId,
+      partyId: id,
+      template: 'join',
+      provider: 'twilio',
+      status: 'sending',
+      footer: false,
+      createdAt: now(),
+    });
+    await h.app.close();
+    apps.splice(apps.indexOf(h.app), 1);
+
+    const cfg = loadConfig({ ...env, ADMIN_PASSWORD: ADMIN, LOG_LEVEL: 'silent' });
+    cfg.webDist = null;
+    const { app, ctx } = await buildApp(cfg, { now, timers: false });
+    apps.push(app);
+    expect(ctx.service.store.getSms(smsId)!.status).toBe('failed');
+    const s: HostSnapshot = (
+      await app.inject({ method: 'GET', url: `/api/host/events/${h.eventId}`, cookies: h.cookies })
+    ).json();
+    expect(s.parties.find((p) => p.id === id)!.lastText).toMatchObject({ status: 'failed' });
+    rmSync(dir, { recursive: true, force: true });
   });
 });
