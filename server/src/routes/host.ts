@@ -72,6 +72,17 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
       service.skipCurrent(req.params.id);
       return snapshot(req.params.id);
     });
+    /** E6: pause the line (optional message and "we're paused" texts) and resume it. */
+    host.post<EventParams>('/api/host/events/:id/pause', async (req) => {
+      const body = (req.body ?? {}) as Body;
+      service.pause(req.params.id, { message: body.message, notify: body.notify });
+      return snapshot(req.params.id);
+    });
+    host.post<EventParams>('/api/host/events/:id/resume', async (req) => {
+      service.resume(req.params.id);
+      return snapshot(req.params.id);
+    });
+
     host.post<EventParams>('/api/host/events/:id/undo', async (req) => {
       const { label } = service.undo(req.params.id);
       return { ...snapshot(req.params.id), undone: label };

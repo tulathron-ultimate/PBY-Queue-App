@@ -85,6 +85,7 @@ describe('templates (§2.4)', () => {
     expect(renderSms('up_next', max).length).toBeLessThanOrEqual(140);
     expect(renderSms('your_turn', max).length).toBeLessThanOrEqual(82);
     expect(renderSms('skipped', max).length).toBeLessThanOrEqual(146);
+    expect(renderSms('paused', max).length).toBeLessThanOrEqual(155);
   });
 
   it('carries no wait time or ETA, and stays under 160 even with a long link and STOP', () => {
@@ -107,6 +108,21 @@ describe('templates (§2.4)', () => {
     }
     expect(renderSms('join', { event: 'Santa', name: 'Leo', pos: 4, link })).toBe(
       `Santa: Leo, you're #4 in line. Track live: ${link}`,
+    );
+  });
+
+  it('has a GSM-7 "paused" text (E6) under 160 with the longest values, STOP and a long link', () => {
+    const link48 = 'https://q.example-long.com/s/' + 'A'.repeat(12) + 'xxxxxxx';
+    const longest = { event: 'X'.repeat(20), name: 'Y'.repeat(12), link: link48 };
+    const plain = renderSms('paused', longest);
+    expect(plain.length).toBe(149);
+    expect(isGsm7(plain)).toBe(true);
+    const withStop = renderSms('paused', longest, { stopFooter: true });
+    expect(withStop.length).toBeLessThanOrEqual(160);
+    expect(withStop).toContain(link48);
+    expect(withStop.endsWith(STOP_FOOTER)).toBe(true);
+    expect(renderSms('paused', { event: 'Santa', name: 'Leo Smith', link })).toBe(
+      `Santa: Leo, the photo line is paused for a short break. You keep your place: ${link}`,
     );
   });
 

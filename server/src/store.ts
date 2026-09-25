@@ -32,6 +32,10 @@ export interface EventRecord {
   lastCallAt: number | null;
   closedAt: number | null;
   purgedAt: number | null;
+  /** E6 pause. */
+  paused: boolean;
+  pauseMessage: string | null;
+  pausedAt: number | null;
 }
 
 export interface PartyRecord extends QueueParty {
@@ -85,6 +89,9 @@ function toEvent(r: any): EventRecord {
     lastCallAt: r.last_call_at,
     closedAt: r.closed_at,
     purgedAt: r.purged_at,
+    paused: !!r.paused,
+    pauseMessage: r.pause_message ?? null,
+    pausedAt: r.paused_at ?? null,
   };
 }
 
@@ -180,6 +187,9 @@ export class Store {
       lastCallAt: 'last_call_at',
       closedAt: 'closed_at',
       purgedAt: 'purged_at',
+      paused: 'paused',
+      pauseMessage: 'pause_message',
+      pausedAt: 'paused_at',
     };
     const sets: string[] = [];
     const values: unknown[] = [];

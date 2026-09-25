@@ -95,7 +95,8 @@ function applyOrder<T extends QueueParty>(parties: readonly T[], ordered: readon
 
 /**
  * Auto Up next (§2.2): the first N arrived active parties become `up_next`; the rest go back to
- * `waiting`. The Up next text goes out once per queue entry (tracked by `upNextSent`).
+ * `waiting`. The Up next text goes out once per queue entry (tracked by `upNextSent`). A party
+ * already `up_next` whose text was held back while the line was paused (E6) is texted now.
  */
 export function recomputeUpNext<T extends QueueParty>(
   parties: readonly T[],
@@ -109,7 +110,7 @@ export function recomputeUpNext<T extends QueueParty>(
   const out = parties.map((p) => {
     if (!isActive(p)) return p;
     if (inRangeIds.has(p.id)) {
-      if (p.state === 'up_next') return p;
+      if (p.state === 'up_next' && p.upNextSent) return p;
       if (!p.upNextSent) texted.add(p.id);
       return { ...p, state: 'up_next' as const, upNextSent: true };
     }
@@ -164,20 +165,22 @@ export function completeCurrent<T extends QueueParty>(
 
 /**
  * Skip / Not here (§2.6): the now-serving party becomes `skipped` (or `no_show` on the
- * 3rd time), gets the Skipped text, and the next party is called automatically.
+ * 3rd time), gets the Skipped text, and the next party is called automatically, unless the
+ * line is paused (E6: `callNext` false), when nobody else is called.
  */
 export function skipCurrent<T extends QueueParty>(
   parties: readonly T[],
   n: number,
   now: number,
   maxSkips: number = DEFAULTS.maxSkips,
+  callNext = true,
 ): QueueResult<T> {
   const current = findNowServing(parties);
   if (!current) throw new QueueError('nobody_serving');
   const skipCount = current.skipCount + 1;
   const state: PartyState = skipCount > maxSkips ? 'no_show' : 'skipped';
   let out = replace(parties, current.id, { state, skipCount, doneAt: now } as Partial<T>);
-  const next = findNextToCall(out);
+  const next = callNext ? findNextToCall(out) : undefined;
   if (next) out = replace(out, next.id, { state: 'now_serving', calledAt: now } as Partial<T>);
   return finish(out, n, next?.id ?? null, [{ partyId: current.id, template: 'skipped' }]);
 }

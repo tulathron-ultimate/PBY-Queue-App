@@ -28,7 +28,7 @@ export function purgeEvent(db: DB, eventId: string, now: number): void {
     db.prepare('DELETE FROM parties WHERE event_id = ?').run(eventId);
     db.prepare(
       `UPDATE events SET status = 'closed', closed_at = COALESCE(closed_at, ?), purged_at = ?,
-        samples = '[]', served_count = COALESCE(served_count, ?), no_show_count = COALESCE(no_show_count, ?),
+        samples = '[]', paused = 0, pause_message = NULL, paused_at = NULL, served_count = COALESCE(served_count, ?), no_show_count = COALESCE(no_show_count, ?),
         avg_service_ms = COALESCE(avg_service_ms, ?)
        WHERE id = ?`,
     ).run(now, now, counts.served ?? 0, counts.no_show ?? 0, avgMs, eventId);

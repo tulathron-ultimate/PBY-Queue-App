@@ -4,6 +4,7 @@ import {
   type HostSnapshot,
   type PendingText,
 } from '@pby/shared';
+import Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { buildApp, type AppContext } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
-import { openDb } from '../src/db.js';
+import { MIGRATIONS, openDb } from '../src/db.js';
 import { runRetention } from '../src/retention.js';
 import { twilioSignature } from '../src/sms/twilio.js';
 
@@ -672,9 +673,9 @@ describe('auto-close uses host actions only (QA #18)', () => {
   it('adds last_host_action_at to an existing database without losing data', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pby-qa-'));
     const path = join(dir, 'old.db');
-    // Build a version-1 database: today's schema minus the new column.
-    const db = openDb(path);
-    db.exec(`ALTER TABLE events DROP COLUMN last_host_action_at`);
+    // Build a version-1 database: only the first migration.
+    const db = new Database(path);
+    db.exec(MIGRATIONS[0]);
     db.pragma('user_version = 1');
     db.prepare(
       `INSERT INTO events (id, code, name, date, pin_hash, up_next_n, minutes_per_party, sms_mode,
@@ -683,7 +684,7 @@ describe('auto-close uses host actions only (QA #18)', () => {
     ).run();
     db.close();
     const upgraded = openDb(path);
-    expect(upgraded.pragma('user_version', { simple: true })).toBe(2);
+    expect(upgraded.pragma('user_version', { simple: true })).toBe(MIGRATIONS.length);
     expect(upgraded.prepare('SELECT name, last_host_action_at h FROM events').get()).toEqual({
       name: 'Old',
       h: 42,

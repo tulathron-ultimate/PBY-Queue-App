@@ -14,7 +14,7 @@ export const PARTY_STATES: readonly PartyState[] = [
 
 export type SmsMode = 'tap' | 'twilio';
 
-export type TemplateKey = 'join' | 'up_next' | 'your_turn' | 'skipped';
+export type TemplateKey = 'join' | 'up_next' | 'your_turn' | 'skipped' | 'paused';
 
 export type PartySource = 'manual' | 'import' | 'vcard' | 'contacts' | 'self';
 
@@ -93,6 +93,11 @@ export interface HostEventInfo extends EventSettings {
   hostConsent: boolean;
   createdAt: number;
   closedAt: number | null;
+  /** E6: the host paused the line. Call next is off and Up next texts wait until Resume. */
+  paused: boolean;
+  /** Optional short note shown to guests while paused, e.g. "Back in 10 minutes". */
+  pauseMessage: string | null;
+  pausedAt: number | null;
 }
 
 export interface HostSnapshot {
@@ -101,6 +106,8 @@ export interface HostSnapshot {
   pendingTexts: PendingText[];
   undo: { label: string; at: number } | null;
   twilioAvailable: boolean;
+  /** Days after close before guest data is purged (§2.12, env RETENTION_DAYS). */
+  retentionDays: number;
   serverTime: number;
 }
 
@@ -132,6 +139,9 @@ export interface GuestSnapshot {
   upNextN: number;
   selfJoin: boolean;
   joinCode: string;
+  /** E6: the line is paused, with the host's optional message. */
+  paused: boolean;
+  pauseMessage: string | null;
   serverTime: number;
 }
 

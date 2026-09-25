@@ -8,6 +8,10 @@ export const TEMPLATES: Readonly<Record<TemplateKey, string>> = {
   your_turn: "{event}: {name}, it's your turn! Please come to the camera now.",
   skipped:
     '{event}: {name}, we called you but missed you. Find the host to get back in line: {link}',
+  // E6: optional, sent when the host pauses the line. The host's message is shown on the
+  // status page, not in the text, so the text stays GSM-7 and under 160 characters.
+  paused:
+    '{event}: {name}, the photo line is paused for a short break. You keep your place: {link}',
 };
 
 export const TEMPLATE_LABELS: Readonly<Record<TemplateKey, string>> = {
@@ -15,6 +19,7 @@ export const TEMPLATE_LABELS: Readonly<Record<TemplateKey, string>> = {
   up_next: 'Up next',
   your_turn: "It's your turn",
   skipped: 'Missed you',
+  paused: 'Line paused',
 };
 
 /** Twilio mode only: appended to the first message to a number in an event. */

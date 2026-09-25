@@ -4,7 +4,8 @@ import Database from 'better-sqlite3';
 
 export type DB = Database.Database;
 
-const MIGRATIONS: string[] = [
+/** Schema migrations; `user_version` counts how many have run. */
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
@@ -103,6 +104,13 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE events ADD COLUMN last_host_action_at INTEGER;
   UPDATE events SET last_host_action_at = last_action_at;
+  `,
+  // 3: pause the line (E6). Undo steps also record the pause state they replace.
+  `
+  ALTER TABLE events ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE events ADD COLUMN pause_message TEXT;
+  ALTER TABLE events ADD COLUMN paused_at INTEGER;
+  ALTER TABLE undo_stack ADD COLUMN event_state TEXT;
   `,
 ];
 

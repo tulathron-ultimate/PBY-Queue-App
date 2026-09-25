@@ -54,6 +54,9 @@ export function hostEventInfo(event: EventRecord): HostEventInfo {
     hostConsent: event.hostConsent,
     createdAt: event.createdAt,
     closedAt: event.closedAt,
+    paused: event.paused,
+    pauseMessage: event.pauseMessage,
+    pausedAt: event.pausedAt,
   };
 }
 
@@ -63,6 +66,7 @@ export interface HostSnapshotInput {
   sms: SmsLogRecord[];
   undo: { label: string; at: number } | null;
   twilioAvailable: boolean;
+  retentionDays: number;
   isOptedOut: (phone: string) => boolean;
   canText: (party: PartyRecord) => boolean;
   now: number;
@@ -121,6 +125,7 @@ export function buildHostSnapshot(input: HostSnapshotInput): HostSnapshot {
     pendingTexts,
     undo: input.undo,
     twilioAvailable: input.twilioAvailable,
+    retentionDays: input.retentionDays,
     serverTime: input.now,
   };
 }
@@ -142,6 +147,8 @@ export function buildGuestSnapshot(
     upNextN: event.upNextN,
     selfJoin: event.selfJoin && !ended,
     joinCode: event.code,
+    paused: event.paused && !ended,
+    pauseMessage: event.paused && !ended ? event.pauseMessage : null,
     serverTime: now,
   };
   if (ended) return { ...base, me: null, nowServing: null, comingUp: [] };

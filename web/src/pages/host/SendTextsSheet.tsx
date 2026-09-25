@@ -12,6 +12,7 @@ const BADGE: Record<TemplateKey, string> = {
   up_next: 'b-up_next',
   join: 'b-waiting',
   skipped: 'b-skipped',
+  paused: 'b-up_next',
 };
 
 interface Sent {
