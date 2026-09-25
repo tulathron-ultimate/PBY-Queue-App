@@ -29,6 +29,8 @@ export interface AppContext {
     /** Backstop: wrong PINs per event from every address together. */
     pinEventAll: RateLimiter;
     admin: RateLimiter;
+    /** Backstop: wrong admin passwords from every address together (SEC-5). */
+    adminAll: RateLimiter;
     /** Unknown status tokens per IP (guessing). */
     status: RateLimiter;
     /** Requests per known status link. */
@@ -144,6 +146,7 @@ export async function buildApp(
       pinEvent: new RateLimiter(20, 3_600_000, 15 * 60_000),
       pinEventAll: new RateLimiter(200, 3_600_000, 15 * 60_000),
       admin: new RateLimiter(5, 60_000, 60_000),
+      adminAll: new RateLimiter(30, 3_600_000, 15 * 60_000),
       status: new RateLimiter(60, 60_000),
       statusToken: new RateLimiter(60, 60_000),
       join: new RateLimiter(cfg.selfJoinPerIp, 10 * 60_000),

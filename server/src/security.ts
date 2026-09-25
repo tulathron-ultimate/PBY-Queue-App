@@ -1,4 +1,5 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { isIPv6 } from 'node:net';
 import { promisify } from 'node:util';
 
 const scryptAsync = promisify(scrypt) as (
@@ -66,6 +67,27 @@ export function safeEqual(a: string, b: string): boolean {
   const ha = createHash('sha256').update(a).digest();
   const hb = createHash('sha256').update(b).digest();
   return timingSafeEqual(ha, hb);
+}
+
+/**
+ * Rate-limit key for a client address (SEC-5). An IPv6 client usually holds a whole /64 and
+ * can pick a new address for every request, so IPv6 addresses are keyed by their /64 prefix.
+ * IPv4 (and IPv4-mapped IPv6) addresses are keyed as-is.
+ */
+export function clientKey(ip: string): string {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1];
+  if (!isIPv6(ip)) return ip;
+  const [head, tail = ''] = ip.toLowerCase().split('%')[0].split('::');
+  const left = head ? head.split(':') : [];
+  const right = ip.includes('::') && tail ? tail.split(':') : [];
+  const groups = ip.includes('::')
+    ? [...left, ...Array<string>(8 - left.length - right.length).fill('0'), ...right]
+    : left;
+  return `${groups
+    .slice(0, 4)
+    .map((g) => g.replace(/^0+(?=.)/, ''))
+    .join(':')}::/64`;
 }
 
 /** Sliding-window counter keyed by IP, event, etc. In memory: fine for a single container. */

@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, type AppContext } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
+import { clientKey } from '../src/security.js';
 
 const ADMIN = 'admin-secret';
 const PIN = '246810';
@@ -222,5 +223,63 @@ describe('SEC-4 join codes cannot be enumerated through other endpoints', () => 
         .statusCode;
     }
     expect(last).toBe(429);
+  });
+});
+
+describe('SEC-5 per-IP limits survive address rotation', () => {
+  it('keys IPv6 clients by /64 and IPv4 clients by address', () => {
+    expect(clientKey('203.0.113.7')).toBe('203.0.113.7');
+    expect(clientKey('::ffff:203.0.113.7')).toBe('203.0.113.7');
+    expect(clientKey('2001:db8:1:2::1')).toBe('2001:db8:1:2::/64');
+    expect(clientKey('2001:0db8:0001:0002:aaaa:bbbb:cccc:dddd')).toBe('2001:db8:1:2::/64');
+    expect(clientKey('2001:db8::5')).toBe('2001:db8:0:0::/64');
+    expect(clientKey('::1')).toBe('0:0:0:0::/64');
+  });
+
+  it('treats every address in one IPv6 /64 as one client', async () => {
+    const h = await setup();
+    const codes: number[] = [];
+    for (let i = 1; i <= 6; i++) {
+      const r = await h.app.inject({
+        method: 'POST',
+        url: '/api/host/login',
+        headers: { 'x-forwarded-for': `2001:db8:1:2::${i.toString(16)}` },
+        payload: { eventId: h.eventId, pin: '000000' },
+      });
+      codes.push(r.statusCode);
+    }
+    expect(codes).toEqual([401, 401, 401, 401, 401, 429]);
+    // Another /64 is another client.
+    const other = await h.app.inject({
+      method: 'POST',
+      url: '/api/host/login',
+      headers: { 'x-forwarded-for': '2001:db8:1:3::1' },
+      payload: { eventId: h.eventId, pin: PIN },
+    });
+    expect(other.statusCode).toBe(200);
+  });
+
+  it('locks event creation after many wrong admin passwords from any mix of addresses', async () => {
+    const h = await setup();
+    let last = 0;
+    for (let i = 0; i < 40; i++) {
+      last = (
+        await h.app.inject({
+          method: 'POST',
+          url: '/api/events',
+          headers: { 'x-forwarded-for': `203.0.113.${i + 1}` },
+          payload: { adminPassword: `guess-${i}`, name: 'X', pin: PIN },
+        })
+      ).statusCode;
+    }
+    expect(last).toBe(429);
+    // While locked, even the right password is refused, so guesses learn nothing.
+    const right = await h.app.inject({
+      method: 'POST',
+      url: '/api/events',
+      headers: { 'x-forwarded-for': '198.51.100.77' },
+      payload: { adminPassword: ADMIN, name: 'X', pin: PIN },
+    });
+    expect(right.statusCode).toBe(429);
   });
 });
