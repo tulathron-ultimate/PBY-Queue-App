@@ -611,4 +611,23 @@ describe('QA regressions', () => {
     expect(h.sent.length).toBe(sentBefore);
     expect(svc.store.getSms(smsId)!.status).toBe('skipped');
   });
+
+  it('does not accept the .env.example placeholder as the admin password', async () => {
+    const placeholder = 'change-me-to-something-long';
+    const cfg = loadConfig({
+      DATABASE_PATH: ':memory:',
+      ADMIN_PASSWORD: placeholder,
+      LOG_LEVEL: 'silent',
+    });
+    expect(cfg.adminPassword).toBeNull();
+    cfg.webDist = null;
+    const { app } = await buildApp(cfg, { now, timers: false });
+    apps.push(app);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/events',
+      payload: { adminPassword: placeholder, name: 'X', pin: PIN },
+    });
+    expect(res.json().error).toBe('admin_not_configured');
+  });
 });

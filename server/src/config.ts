@@ -34,6 +34,14 @@ export interface Config {
   logLevel: string;
 }
 
+/** The value shipped in .env.example. Deployed unchanged, anyone could create events. */
+export const ADMIN_PASSWORD_PLACEHOLDER = 'change-me-to-something-long';
+
+function adminPassword(value: string | undefined): string | null {
+  const v = value?.trim();
+  return v && v !== ADMIN_PASSWORD_PLACEHOLDER ? v : null;
+}
+
 function num(value: string | undefined, fallback: number): number {
   const n = Number(value);
   return value !== undefined && value !== '' && Number.isFinite(n) ? n : fallback;
@@ -79,7 +87,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: num(env.PORT, 3000),
     host: env.HOST?.trim() || '0.0.0.0',
     dbPath: env.DATABASE_PATH?.trim() || resolve(process.cwd(), 'data/pby-queue.db'),
-    adminPassword: env.ADMIN_PASSWORD?.trim() || null,
+    adminPassword: adminPassword(env.ADMIN_PASSWORD),
     publicUrl: env.PUBLIC_URL?.trim().replace(/\/+$/, '') || null,
     cookieSecure: !cookieSecure || cookieSecure === 'auto' ? 'auto' : bool(cookieSecure, false),
     trustProxy: trustProxy(env.TRUST_PROXY),
