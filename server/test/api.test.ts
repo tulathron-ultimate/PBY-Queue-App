@@ -576,4 +576,39 @@ describe('QA regressions', () => {
     expect(body).not.toContain('Rivera');
     expect(body).not.toMatch(/201.?8830/);
   });
+
+  it('drops queued texts for a party the host marks No texts', async () => {
+    const h = await setup();
+    const id = await addManual(h, 'Emma Rivera', '555-201-8830');
+    expect((await snap(h)).pendingTexts.map((t) => t.partyId)).toEqual([id]);
+    // The guest replied STOP to the host's phone (tap-to-send), so the host turns texts off.
+    await host(h, 'PATCH', `/parties/${id}`, { noTexts: true });
+    expect((await snap(h)).pendingTexts).toEqual([]);
+  });
+
+  it('does not send a queued Twilio text to a party marked No texts', async () => {
+    const h = await setup({
+      TWILIO_ACCOUNT_SID: 'AC123',
+      TWILIO_AUTH_TOKEN: 'secret-token',
+      TWILIO_FROM: '+15550001111',
+    });
+    const id = await addManual(h, 'Emma Rivera', '555-201-8830', { sendJoinText: false });
+    // Queue a text, then turn texts off before the dispatcher gets to it.
+    const svc = h.ctx.service;
+    await svc.pendingDispatch;
+    const sentBefore = h.sent.length; // the Up next text for joining an empty line
+    const smsId = h.ctx.service.store.insertSms({
+      eventId: h.eventId,
+      partyId: id,
+      template: 'join',
+      provider: 'twilio',
+      status: 'sending',
+      footer: false,
+      createdAt: now(),
+    });
+    await host(h, 'PATCH', `/parties/${id}`, { noTexts: true });
+    await (svc as unknown as { sendTwilio(id: number): Promise<void> }).sendTwilio(smsId);
+    expect(h.sent.length).toBe(sentBefore);
+    expect(svc.store.getSms(smsId)!.status).toBe('skipped');
+  });
 });

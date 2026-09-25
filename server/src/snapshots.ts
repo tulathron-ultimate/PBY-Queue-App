@@ -129,7 +129,8 @@ export function buildHostSnapshot(input: HostSnapshotInput): HostSnapshot {
   for (const s of sms) {
     if (s.status !== 'pending' || s.provider !== 'tap') continue;
     const party = byId.get(s.partyId);
-    if (!party?.phone) continue;
+    // Turned to "No texts", opted out or lost consent since it was queued: never offer it.
+    if (!party?.phone || !input.canText(party)) continue;
     pendingTexts.push({
       id: s.id,
       partyId: s.partyId,

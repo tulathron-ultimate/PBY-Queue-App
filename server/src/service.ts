@@ -345,8 +345,16 @@ export class QueueService {
     const party = parties.find((p) => p.id === sms.partyId);
     if (!event || !party?.phone) return;
     const now = this.now();
-    if (this.isOptedOut(party.phone)) {
-      this.store.setSmsStatus(id, 'skipped', now, 'opted_out');
+    // Re-check at send time: the number may have opted out, or the host may have switched the
+    // party to "No texts", since the text was queued.
+    if (!this.canText(event, party)) {
+      this.store.setSmsStatus(
+        id,
+        'skipped',
+        now,
+        this.isOptedOut(party.phone) ? 'opted_out' : 'cannot_text',
+      );
+      this.onChange(event.id);
       return;
     }
     const body = renderBody(event, parties, party, sms.template, sms.footer);
