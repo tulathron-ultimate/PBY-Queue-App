@@ -26,7 +26,10 @@ export interface AppContext {
     pinIp: RateLimiter;
     pinEvent: RateLimiter;
     admin: RateLimiter;
+    /** Unknown status tokens per IP (guessing). */
     status: RateLimiter;
+    /** Requests per known status link. */
+    statusToken: RateLimiter;
     join: RateLimiter;
   };
   setHostCookie(req: FastifyRequest, reply: FastifyReply, eventId: string, token: string): void;
@@ -80,6 +83,7 @@ export async function buildApp(
       pinEvent: new RateLimiter(20, 3_600_000, 15 * 60_000),
       admin: new RateLimiter(5, 60_000, 60_000),
       status: new RateLimiter(60, 60_000),
+      statusToken: new RateLimiter(60, 60_000),
       join: new RateLimiter(10, 10 * 60_000),
     },
     setHostCookie(req, reply, eventId, token) {

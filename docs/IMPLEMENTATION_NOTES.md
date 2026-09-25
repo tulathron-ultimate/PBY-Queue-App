@@ -90,6 +90,11 @@ templates and rules), then `DESIGN.md`, and otherwise the simplest reasonable op
   (`+1******1234`); SMS bodies are never logged. `Referrer-Policy: no-referrer` keeps status
   tokens out of referrers.
 - **Rate limits** (§2.10) are in memory, which is correct for the single-container deployment.
+- **Status limit (§2.10):** instead of 60 requests a minute per IP, unknown tokens count 60 a
+  minute per IP (after that the IP gets 429 for every token) and each real link gets 60 a minute.
+  Families at one venue often share a Wi-Fi or carrier NAT address, and a page load costs two
+  requests (fetch + WebSocket), so a plain per-IP limit locked out the 31st family to open
+  their link in the same minute.
 
 ## Imports
 

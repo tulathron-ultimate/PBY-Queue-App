@@ -677,4 +677,30 @@ describe('QA regressions', () => {
       expect(res.statusCode, JSON.stringify(rows)).toBe(400);
     }
   });
+
+  it('lets many guests behind one venue IP load their pages, but stops token guessing', async () => {
+    const h = await setup();
+    const rows = Array.from({ length: 40 }, (_, i) => ({ name: `Family ${i}` }));
+    await host(h, 'POST', '/import', { rows });
+    const tokens = (await snap(h)).parties.map((p) => p.token);
+    // 40 families on the same Wi-Fi open their links in the same minute: page load + refresh.
+    const codes = new Set<number>();
+    for (const token of [...tokens, ...tokens]) {
+      codes.add((await h.app.inject({ method: 'GET', url: `/api/status/${token}` })).statusCode);
+    }
+    expect([...codes]).toEqual([200]);
+    // Guessing tokens from that IP is still cut off after 60 misses a minute.
+    const guesses: number[] = [];
+    for (let i = 0; i < 61; i++) {
+      const res = await h.app.inject({ method: 'GET', url: `/api/status/AAAAAAAAA${100 + i}` });
+      guesses.push(res.statusCode);
+    }
+    expect(guesses.at(-1)).toBe(429);
+    // A single page is still limited to 60 requests a minute.
+    const one: number[] = [];
+    for (let i = 0; i < 61; i++) {
+      one.push((await h.app.inject({ method: 'GET', url: `/api/status/${tokens[0]}` })).statusCode);
+    }
+    expect(one.at(-1)).toBe(429);
+  });
 });

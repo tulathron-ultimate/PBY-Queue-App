@@ -145,15 +145,26 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
     return reply.type('image/svg+xml').header('Cache-Control', 'public, max-age=3600').send(svg);
   });
 
-  const statusGuard = (ip: string) => {
-    if (!limits.status.hit(ip)) {
-      throw new ServiceError(429, 'rate_limited', 'Too many requests. Try again in a minute.');
+  /**
+   * §2.10 status limit, keyed so that a venue's shared Wi-Fi or carrier NAT address doesn't lock
+   * out every family on it: unknown tokens count per IP (60 misses a minute stops guessing, and
+   * then that IP gets 429 for every token, so it can't keep probing), and each real link gets
+   * 60 requests a minute of its own.
+   */
+  const statusGuard = (ip: string, token: string) => {
+    const tooMany = () =>
+      new ServiceError(429, 'rate_limited', 'Too many requests. Try again in a minute.');
+    if (limits.status.retryAfter(ip) > 0) throw tooMany();
+    if (!service.store.getPartyByToken(token)) {
+      limits.status.hit(ip);
+      return;
     }
+    if (!limits.statusToken.hit(token)) throw tooMany();
   };
 
   /** G1 status (polling fallback). Unknown tokens get a generic 404. */
   app.get<{ Params: { token: string } }>('/api/status/:token', async (req) => {
-    statusGuard(req.ip);
+    statusGuard(req.ip, req.params.token);
     const snap = service.guestSnapshot(req.params.token);
     if (!snap) throw new ServiceError(404, 'not_found', 'Not found.');
     return snap;
@@ -161,7 +172,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   /** G4 "I'm here" check-in. */
   app.post<{ Params: { token: string } }>('/api/status/:token/arrive', async (req) => {
-    statusGuard(req.ip);
+    statusGuard(req.ip, req.params.token);
     return service.guestArrive(req.params.token);
   });
 
@@ -169,7 +180,11 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
     '/ws/status/:token',
     { websocket: true },
     (socket, req) => {
-      if (!limits.status.hit(req.ip)) return socket.close(4429, 'rate_limited');
+      try {
+        statusGuard(req.ip, req.params.token);
+      } catch {
+        return socket.close(4429, 'rate_limited');
+      }
       const party = service.store.getPartyByToken(req.params.token);
       if (!party || !service.getEvent(party.eventId)) return socket.close(4404, 'not_found');
       ctx.hub.addGuest(party.eventId, party.id, socket);
