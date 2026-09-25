@@ -256,7 +256,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
         'not_found',
       );
     }
-    ctx.hub.addLobby(event.id, socket, req.params.token);
+    ctx.hub.addLobby(event.id, socket, req.params.token, ip(req));
   });
 
   app.get<{ Params: { token: string } }>(

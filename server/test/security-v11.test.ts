@@ -1,0 +1,182 @@
+/**
+ * Second-pass security regressions for the v1.1 features (lobby display, pause, results CSV).
+ * See "Second pass: v1.1 features" in docs/SECURITY_REVIEW.md. Tests named SEC-n failed on the
+ * code before that fix; the others confirm that the earlier protections cover the new routes.
+ */
+import type { HostSnapshot, LobbySnapshot } from '@pby/shared';
+import { EventEmitter } from 'node:events';
+import { afterEach, describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
+import { WS_LIMITS } from '../src/hub.js';
+import {
+  addManual,
+  advance,
+  closeApps,
+  fiveParties,
+  host,
+  setup,
+  snap,
+  TWILIO_ENV,
+  type Harness,
+} from './harness.js';
+
+afterEach(closeApps);
+
+async function makeLink(h: Harness, payload: object = {}): Promise<string> {
+  const res = await host(h, 'POST', '/lobby', payload);
+  expect(res.statusCode, res.body).toBe(200);
+  return (res.json() as HostSnapshot).event.lobbyUrl!.split('/d/')[1];
+}
+
+const lobby = (h: Harness, token: string, ip = '203.0.113.9') =>
+  h.app.inject({ method: 'GET', url: `/api/lobby/${token}`, remoteAddress: ip });
+
+async function openLobbySocket(h: Harness, token: string) {
+  if (!h.app.server.listening) await h.app.listen({ port: 0, host: '127.0.0.1' });
+  const { port } = h.app.server.address() as { port: number };
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/lobby/${token}`);
+  let closedWith: number | null = null;
+  const closed = new Promise<number>((resolve) =>
+    ws.on('close', (code) => {
+      closedWith = code;
+      resolve(code);
+    }),
+  );
+  const first = new Promise<LobbySnapshot>((resolve) =>
+    ws.once('message', (raw) => resolve(JSON.parse(String(raw)).data)),
+  );
+  return { ws, closed, first, closedWith: () => closedWith };
+}
+
+const settle = () => new Promise((r) => setTimeout(r, 100));
+
+describe('v1.1 routes keep the SEC-1/2/9 protections', () => {
+  const routes = ['/pause', '/resume', '/lobby', '/lobby/revoke'];
+
+  it('refuses non-JSON and cross-origin writes to pause, resume and the lobby link', async () => {
+    const h = await setup();
+    for (const path of routes) {
+      const url = `/api/host/events/${h.eventId}${path}`;
+      const plain = await h.app.inject({
+        method: 'POST',
+        url,
+        cookies: h.cookies,
+        headers: { 'content-type': 'text/plain; application/json' },
+        payload: '{}',
+      });
+      expect(plain.statusCode, path).toBe(415);
+      const sibling = await h.app.inject({
+        method: 'POST',
+        url,
+        cookies: h.cookies,
+        headers: { origin: 'https://evil.example.com', 'sec-fetch-site': 'same-site' },
+        payload: {},
+      });
+      expect(sibling.statusCode, path).toBe(403);
+    }
+    const s = await snap(h);
+    expect(s.event.paused).toBe(false);
+    expect(s.event.lobbyUrl).toBeNull();
+  });
+
+  it('keeps the 64 KB body limit on the new routes', async () => {
+    const h = await setup();
+    const res = await host(h, 'POST', '/pause', { message: 'x'.repeat(70 * 1024) });
+    expect(res.statusCode).toBe(413);
+    expect((await snap(h)).event.paused).toBe(false);
+  });
+
+  it('sends CSP, anti-framing and no-store on the export and the lobby API', async () => {
+    const h = await setup();
+    const token = await makeLink(h);
+    const csv = await host(h, 'GET', '/export.csv');
+    const lob = await lobby(h, token);
+    for (const res of [csv, lob]) {
+      expect(res.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+      expect(res.headers['x-frame-options']).toBe('DENY');
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.headers['referrer-policy']).toBe('no-referrer');
+      expect(res.headers['access-control-allow-origin']).toBeUndefined();
+    }
+  });
+
+  it('builds the export file name from a slug only (quotes, newlines, unicode)', async () => {
+    const name = 'Ev"il\r\nSet-Cookie: a=b ✨ Ünï';
+    const h = await setup({}, { name, date: '2026-10-01' });
+    const res = await host(h, 'GET', '/export.csv');
+    expect(res.headers['content-disposition']).toMatch(
+      /^attachment; filename="[a-z0-9-]+-2026-10-01-results\.csv"$/,
+    );
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('pause and lobby routes are host-only; guests cannot change the pause state', async () => {
+    const h = await setup();
+    await addManual(h, 'Emma Rivera', '555-201-8830');
+    const token = (await snap(h)).parties[0].token;
+    for (const url of [
+      `/api/status/${token}/pause`,
+      `/api/lobby/${'A'.repeat(24)}/pause`,
+      `/api/host/events/${h.eventId}/pause`,
+    ]) {
+      const res = await h.app.inject({ method: 'POST', url, payload: {} });
+      expect(res.statusCode, url).toBeGreaterThanOrEqual(401);
+    }
+    expect((await snap(h)).event.paused).toBe(false);
+  });
+});
+
+describe('SEC-17 lobby display sockets have per-link and per-address caps', () => {
+  class FakeSocket extends EventEmitter {
+    readonly OPEN = 1;
+    readyState = 1;
+    closedWith: number | null = null;
+    send() {}
+    close(code: number) {
+      if (this.closedWith !== null) return;
+      this.closedWith = code;
+      this.readyState = 3;
+      this.emit('close', code);
+    }
+  }
+  const sock = () => new FakeSocket() as unknown as WebSocket & FakeSocket;
+
+  it('keeps at most a few sockets per lobby link, closing the oldest', async () => {
+    const h = await setup();
+    const token = await makeLink(h);
+    const sockets = Array.from({ length: 30 }, () => sock());
+    for (const ws of sockets) h.ctx.hub.addLobby(h.eventId, ws, token, '203.0.113.5');
+    const open = sockets.filter((s) => s.closedWith === null);
+    expect(open.length).toBeLessThanOrEqual(WS_LIMITS.perLobby);
+    expect(open).toContain(sockets.at(-1));
+    expect(sockets[0].closedWith).toBe(4408);
+  });
+
+  it('counts lobby sockets toward the per-address cap', async () => {
+    const h = await setup();
+    const token = await makeLink(h);
+    for (let i = 0; i < WS_LIMITS.perIp; i++) {
+      h.ctx.hub.addGuest(h.eventId, `party-${i}`, sock(), '203.0.113.6');
+    }
+    const ws = sock();
+    h.ctx.hub.addLobby(h.eventId, ws, token, '203.0.113.6');
+    expect(ws.closedWith).toBe(4429);
+  });
+
+  it('applies over the real /ws/lobby route, and Hub.close() closes lobby sockets', async () => {
+    const h = await setup();
+    const token = await makeLink(h);
+    const socks = [];
+    for (let i = 0; i < WS_LIMITS.perLobby + 2; i++) {
+      const s = await openLobbySocket(h, token);
+      await s.first;
+      socks.push(s);
+    }
+    expect(await socks[0].closed).toBe(4408);
+    expect(await socks[1].closed).toBe(4408);
+    const last = socks.at(-1)!;
+    expect(last.closedWith()).toBeNull();
+    h.ctx.hub.close();
+    expect(await last.closed).toBe(1001);
+  });
+});

@@ -13,8 +13,9 @@ const PING_MS = 25_000;
  * one device; past these the oldest socket is closed (4408), so a reload never locks anyone out.
  * An address gets at most `perIp` sockets in all (refused with 4429): venues share one Wi-Fi or
  * carrier address, so this is generous and only stops one client from exhausting memory.
+ * A lobby display link is a few TVs or tablets at one venue (SEC-17).
  */
-export const WS_LIMITS = { perParty: 10, perSession: 5, perIp: 1000 };
+export const WS_LIMITS = { perParty: 10, perSession: 5, perLobby: 5, perIp: 1000 };
 
 export class Hub {
   /** Host sockets per event, with the session token each one was opened with. */
@@ -97,7 +98,8 @@ export class Hub {
     if (snap) Hub.send(ws, { type: 'guest', data: snap });
   }
 
-  addLobby(eventId: string, ws: WebSocket, token: string): void {
+  addLobby(eventId: string, ws: WebSocket, token: string, ip: string): void {
+    if (!this.admit(ws, `l ${token}`, WS_LIMITS.perLobby, ip)) return;
     const map = this.lobbies.get(eventId) ?? new Map<WebSocket, string>();
     map.set(ws, token);
     this.lobbies.set(eventId, map);
@@ -176,10 +178,11 @@ export class Hub {
 
   close(): void {
     clearInterval(this.timer);
-    for (const map of [...this.hosts.values(), ...this.guests.values()]) {
+    for (const map of [...this.hosts.values(), ...this.guests.values(), ...this.lobbies.values()]) {
       for (const ws of map.keys()) ws.close(1001, 'server_shutdown');
     }
     this.hosts.clear();
     this.guests.clear();
+    this.lobbies.clear();
   }
 }
