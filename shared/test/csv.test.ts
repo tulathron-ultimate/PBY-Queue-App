@@ -85,3 +85,24 @@ describe('CSV export (E8)', () => {
     expect(resultsFileName('🎃🎃', 'x')).toBe('event-results.csv');
   });
 });
+
+describe('SEC-20 formula escaping after leading whitespace and full-width signs', () => {
+  it.each([
+    [' =1+1', "' =1+1"],
+    ['  @SUM(A1)', "'  @SUM(A1)"],
+    [' +1', "' +1"],
+    ['　=1', "'　=1"],
+    ['\n=1', `"'\n=1"`],
+    ['＝1+1', "'＝1+1"],
+    ['＋1', "'＋1"],
+    ['－1', "'－1"],
+    ['＠1', "'＠1"],
+    [' \t=1', "' \t=1"],
+  ])('prefixes %j', (input, out) => {
+    expect(csvCell(input)).toBe(out);
+  });
+
+  it('leaves ordinary text alone', () => {
+    for (const t of ['Emma = Leo', ' Emma', 'Smith-Jones', 'a+b']) expect(csvCell(t)).toBe(t);
+  });
+});

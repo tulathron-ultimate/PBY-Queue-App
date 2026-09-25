@@ -255,7 +255,7 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 |------|---------|
 | Where | Settings → Data → **Download results (CSV)**, while the event is open or closed, until the retention purge (after closing, sign back in with the PIN). Host session only (`GET /api/host/events/{id}/export.csv`). |
 | Columns | `Ticket, Party name, Party size, Members, Phone, Group, Notes, Final status, Checked in, Called, Done`. Members are joined with `; `. Phone is E.164 (blank if missing or invalid). Final status is `done`, `no_show`, `skipped`, `removed` or `waiting` (Up next counts as waiting), or `now_serving` for a party being photographed at export time. Times are `YYYY-MM-DD HH:MM:SS` in the device's time zone; Done is filled for done parties only. Check-in times are recorded from v1.1 on. |
-| Escaping | Any cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'` (so every phone number shows as `'+15551234567`), then RFC 4180 quoting. |
+| Escaping | Any cell starting with `=`, `+`, `-`, `@` (or their full-width forms), also after leading whitespace, or with tab, CR or LF, gets a leading `'` (so every phone number shows as `'+15551234567`), then RFC 4180 quoting. |
 | File | UTF-8 with a BOM (for Excel), CRLF lines, `Content-Disposition: attachment` with an ASCII name like `pumpkin-patch-portraits-2026-10-01-results.csv`, `Cache-Control: no-store`, `nosniff`. The service worker never caches API responses. |
 
 ---

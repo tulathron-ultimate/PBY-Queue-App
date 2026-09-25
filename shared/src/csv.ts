@@ -1,6 +1,6 @@
 /**
  * E8 results export: one row per party, for photo ordering. CSV-injection safe: a cell that
- * starts with = + - @ tab or CR gets a leading single quote, so spreadsheet apps never run it
+ * starts with = + - @ (also full-width, or after spaces), tab, CR or LF gets a leading quote, so spreadsheet apps never run it
  * as a formula. That includes every E164 phone number (they start with +), so the Phone column
  * is always prefixed the same way.
  */
@@ -37,7 +37,11 @@ export interface ResultsRow {
   doneAt: number | null;
 }
 
-const FORMULA_START = /^[=+\-@\t\r]/;
+/**
+ * A formula sign (ASCII or full-width) after any leading whitespace, or a leading tab, CR or
+ * LF. Spreadsheet apps may trim leading spaces before deciding a cell is a formula (SEC-20).
+ */
+const FORMULA_START = /^[\t\r\n]|^\s*[=+\-@＝＋－＠]/;
 
 /** One CSV cell: formula-looking text gets a leading ', then RFC 4180 quoting if needed. */
 export function csvCell(value: string | number | null | undefined): string {
