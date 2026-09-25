@@ -180,3 +180,22 @@ describe('SEC-17 lobby display sockets have per-link and per-address caps', () =
     expect(await last.closed).toBe(1001);
   });
 });
+
+describe('SEC-18 lobby token misses are keyed by IPv6 /64', () => {
+  it('rotating addresses inside one /64 shares one miss budget', async () => {
+    const h = await setup();
+    const token = await makeLink(h);
+    for (let i = 0; i < 60; i++) {
+      await lobby(h, `x${i}`.padEnd(24, 'y'), `2001:db8:1:2::${(i + 1).toString(16)}`);
+    }
+    // Another address in the same /64 is locked out too, on lobby links and status links.
+    expect((await lobby(h, token, '2001:db8:1:2::ffff')).statusCode).toBe(429);
+    const status = await h.app.inject({
+      method: 'GET',
+      url: `/api/status/${'s'.repeat(12)}`,
+      remoteAddress: '2001:db8:1:2::abcd',
+    });
+    expect(status.statusCode).toBe(429);
+    expect((await lobby(h, token, '2001:db8:1:3::1')).statusCode).toBe(200);
+  });
+});

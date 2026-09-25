@@ -240,7 +240,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
   };
 
   app.get<{ Params: { token: string } }>('/api/lobby/:token', async (req, reply) => {
-    lobbyGuard(req.ip, req.params.token);
+    lobbyGuard(ip(req), req.params.token);
     const snap = service.lobbySnapshot(req.params.token);
     if (!snap) throw new ServiceError(404, 'not_found', 'Not found.');
     return reply.header('Cache-Control', 'no-store').send(snap);
@@ -249,7 +249,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
   app.get<{ Params: { token: string } }>('/ws/lobby/:token', { websocket: true }, (socket, req) => {
     let event;
     try {
-      event = lobbyGuard(req.ip, req.params.token);
+      event = lobbyGuard(ip(req), req.params.token);
     } catch (err) {
       return socket.close(
         err instanceof ServiceError && err.status === 429 ? 4429 : 4404,
