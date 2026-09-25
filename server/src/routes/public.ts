@@ -1,0 +1,178 @@
+import type { FastifyInstance } from 'fastify';
+import QRCode from 'qrcode';
+import type { AppContext } from '../app.js';
+import { ServiceError } from '../errors.js';
+import { safeEqual, verifyPin } from '../security.js';
+import { joinLink } from '../snapshots.js';
+import type { CreateEventInput } from '../service.js';
+
+type Body = Record<string, unknown>;
+
+export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): void {
+  const { service, cfg, limits } = ctx;
+
+  app.get('/api/config', async () => ({
+    twilioAvailable: service.twilioAvailable,
+    adminConfigured: !!cfg.adminPassword,
+  }));
+
+  /** E1: creating an event requires ADMIN_PASSWORD. */
+  app.post('/api/events', async (req, reply) => {
+    const body = (req.body ?? {}) as Body & CreateEventInput;
+    if (!cfg.adminPassword) {
+      throw new ServiceError(
+        403,
+        'admin_not_configured',
+        'Set ADMIN_PASSWORD on the server first.',
+      );
+    }
+    const wait = limits.admin.retryAfter(req.ip);
+    if (wait)
+      throw new ServiceError(429, 'rate_limited', `Try again in ${wait} s.`, { retryAfter: wait });
+    if (!safeEqual(String(body.adminPassword ?? ''), cfg.adminPassword)) {
+      limits.admin.hit(req.ip);
+      throw new ServiceError(401, 'wrong_admin_password', 'Wrong admin password.');
+    }
+    const event = await service.createEvent(body, ctx.originOf(req));
+    const token = service.sessions.create(event.id);
+    ctx.setHostCookie(req, reply, event.id, token);
+    return { id: event.id, code: event.code };
+  });
+
+  /** Minimal info for the PIN screen. */
+  app.get<{ Params: { id: string } }>('/api/events/:id/public', async (req) => {
+    const event = service.getEvent(req.params.id);
+    if (!event) throw new ServiceError(404, 'not_found', 'Event not found.');
+    return { id: event.id, name: event.name, status: event.status };
+  });
+
+  /** E2/E3: unlock one event with its PIN (by event id or join code). */
+  app.post('/api/host/login', async (req, reply) => {
+    const body = (req.body ?? {}) as Body;
+    const ipWait = limits.pinIp.retryAfter(req.ip);
+    if (ipWait) {
+      throw new ServiceError(429, 'rate_limited', `Too many tries. Try again in ${ipWait} s.`, {
+        retryAfter: ipWait,
+      });
+    }
+    const event =
+      typeof body.eventId === 'string'
+        ? service.getEvent(body.eventId)
+        : typeof body.code === 'string'
+          ? service.store.getEventByCode(body.code.trim())
+          : null;
+    if (event && !event.purgedAt) {
+      const lock = limits.pinEvent.retryAfter(event.id);
+      if (lock) {
+        throw new ServiceError(
+          423,
+          'event_locked',
+          `Too many wrong PINs. Try again in ${Math.ceil(lock / 60)} min.`,
+          {
+            retryAfter: lock,
+          },
+        );
+      }
+    }
+    const ok =
+      event && !event.purgedAt ? await verifyPin(String(body.pin ?? ''), event.pinHash) : false;
+    if (!ok || !event) {
+      limits.pinIp.hit(req.ip);
+      if (event) limits.pinEvent.hit(event.id);
+      const triesLeft = limits.pinIp.remaining(req.ip);
+      throw new ServiceError(401, 'wrong_pin', 'Wrong PIN.', { triesLeft });
+    }
+    const token = service.sessions.create(event.id);
+    ctx.setHostCookie(req, reply, event.id, token);
+    return { id: event.id };
+  });
+
+  /** H0: the events this device is signed in to (one cookie per event). */
+  app.get('/api/host/events', async (req) => {
+    const events = [];
+    for (const [name, token] of Object.entries(req.cookies)) {
+      if (!name.startsWith('pby_h_') || !token) continue;
+      const id = name.slice('pby_h_'.length);
+      if (!service.sessions.valid(id, token)) continue;
+      const event = service.getEvent(id);
+      if (!event) continue;
+      const parties = service.store.listParties(id);
+      events.push({
+        id,
+        name: event.name,
+        date: event.date,
+        status: event.status,
+        waiting: parties.filter((p) => p.state === 'waiting' || p.state === 'up_next').length,
+        done: parties.filter((p) => p.state === 'done').length,
+      });
+    }
+    return { events: events.sort((a, b) => b.date.localeCompare(a.date)) };
+  });
+
+  /* ------------------------------------------------------------ guests */
+
+  app.get<{ Params: { code: string } }>('/api/join/:code', async (req) => {
+    const info = service.joinInfo(req.params.code);
+    if (!info) throw new ServiceError(404, 'not_found', 'Not found.');
+    return info;
+  });
+
+  app.post<{ Params: { code: string } }>('/api/join/:code', async (req) => {
+    const body = (req.body ?? {}) as Body;
+    // Honeypot: real people never fill the hidden "website" field.
+    if (typeof body.website === 'string' && body.website.trim()) {
+      throw new ServiceError(400, 'bad_request', 'Request failed.');
+    }
+    if (!limits.join.hit(req.ip)) {
+      throw new ServiceError(
+        429,
+        'rate_limited',
+        'Too many sign-ups from this network. Try again soon.',
+      );
+    }
+    return service.selfJoin(req.params.code, body);
+  });
+
+  app.get<{ Params: { code: string } }>('/api/join/:code/qr.svg', async (req, reply) => {
+    const event = service.store.getEventByCode(req.params.code);
+    if (!event || event.purgedAt) throw new ServiceError(404, 'not_found', 'Not found.');
+    const svg = await QRCode.toString(joinLink(event), {
+      type: 'svg',
+      margin: 2,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+    return reply.type('image/svg+xml').header('Cache-Control', 'public, max-age=3600').send(svg);
+  });
+
+  const statusGuard = (ip: string) => {
+    if (!limits.status.hit(ip)) {
+      throw new ServiceError(429, 'rate_limited', 'Too many requests. Try again in a minute.');
+    }
+  };
+
+  /** G1 status (polling fallback). Unknown tokens get a generic 404. */
+  app.get<{ Params: { token: string } }>('/api/status/:token', async (req) => {
+    statusGuard(req.ip);
+    const snap = service.guestSnapshot(req.params.token);
+    if (!snap) throw new ServiceError(404, 'not_found', 'Not found.');
+    return snap;
+  });
+
+  /** G4 "I'm here" check-in. */
+  app.post<{ Params: { token: string } }>('/api/status/:token/arrive', async (req) => {
+    statusGuard(req.ip);
+    return service.guestArrive(req.params.token);
+  });
+
+  app.get<{ Params: { token: string } }>(
+    '/ws/status/:token',
+    { websocket: true },
+    (socket, req) => {
+      if (!limits.status.hit(req.ip)) return socket.close(4429, 'rate_limited');
+      const party = service.store.getPartyByToken(req.params.token);
+      if (!party || !service.getEvent(party.eventId)) return socket.close(4404, 'not_found');
+      ctx.hub.addGuest(party.eventId, party.id, socket);
+    },
+  );
+}
