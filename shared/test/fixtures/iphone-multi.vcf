@@ -1,0 +1,43 @@
+BEGIN:VCARD
+VERSION:3.0
+PRODID:-//Apple Inc.//iPhone OS 17.5//EN
+N:Rivera;Emma;;;
+FN:Emma Rivera
+ORG:Oak Park Elementary;
+item1.TEL;type=pref:(555) 201-8830
+item1.X-ABLabel:_$!<Other>!$_
+TEL;type=CELL;type=VOICE:+1 (555) 309-4417
+TEL;type=HOME;type=VOICE:555-740-1122
+EMAIL;type=INTERNET;type=HOME;type=pref:emma@example.com
+PHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAA
+ gAAgESAAMAAAABAAEAAIdpAAQAAAABAAAAJgAAAAAAAqACAAQAAAABAAAAAqADAAQAAAABAAA
+ AAgAAAAD/7QA4UGhvdG9zaG9wIDMuMAA4QklNBAQAAAAAAAA4QklNBCUAAAAAABDUHYzZjwCy
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+PRODID:-//Apple Inc.//iPhone OS 17.5//EN
+N:Nguyen;Linh;;;
+FN:Linh Nguyen
+item1.TEL:555.882.0019
+item1.X-ABLabel:mobile
+item2.TEL:555.882.0020
+item2.X-ABLabel:_$!<Work>!$_
+NOTE:Loves the pumpkin patch\, bring props\nSecond line
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+N:García;José;;;
+FN:José Garc
+ ía Family
+TEL;type=IPHONE;type=CELL;type=VOICE;type=pref:555 610 7788
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+N:;;;;
+ORG:Hawks Soccer Club;
+TEL;type=WORK:5556107700
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+N:Okafor;Chidi;;;
+END:VCARD

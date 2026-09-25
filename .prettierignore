@@ -1,0 +1,11 @@
+node_modules
+dist
+dev-dist
+package-lock.json
+docs/screenshots
+test-results
+playwright-report
+shared/test/fixtures
+docs/DECISIONS.md
+docs/FEATURES.md
+docs/design

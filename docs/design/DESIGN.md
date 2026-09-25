@@ -66,7 +66,13 @@ Tints become `--bg`, borders become 2px `--text`, status is shown by the left ba
 
 ### 1.2 Typography
 
-System font stack for zero-latency loading and native legibility: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`. All numbers use `font-variant-numeric: tabular-nums` so positions do not jitter as they update.
+Three roles, echoing the Photos by Yaz site (an elegant high-contrast serif for headlines and a widely tracked geometric sans for navigation):
+
+- **Display** (`--font-display`): `"Cormorant Garamond", Georgia, serif`, weight 600. Used only for event titles, the guest hero ("You're #4"), "It's your turn" and the lobby display headline. Never for list rows or buttons, because thin serifs wash out in sun.
+- **Label** (`--font-label`): `"Jost", system-ui, sans-serif`, weight 500, uppercase, letter-spacing 0.12em. Used for section eyebrows ("NOW SERVING", "UP NEXT") and status badges.
+- **Body/UI** (`--font-body`): the system stack `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif` for zero-latency loading and legibility in lists, forms and buttons.
+
+Fonts are self-hosted (the `@fontsource/cormorant-garamond` and `@fontsource/jost` packages bundled into the app) so they work offline and on the Unraid install. Only the Latin subsets and the used weights are included. All numbers use `font-variant-numeric: tabular-nums` so positions do not jitter as they update.
 
 Base size is **18px** (larger than the usual 16) because both audiences read at arm's length or in glare. Nothing interactive is smaller than 16px; 14px is reserved for timestamps and fine print.
 

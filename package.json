@@ -1,0 +1,40 @@
+{
+  "name": "pby-queue-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:shared": "npm run build -w @pby/shared",
+    "build": "npm run build:shared && npm run build -w @pby/server && npm run build -w @pby/web",
+    "dev": "npm run build:shared && npm run dev:all",
+    "dev:all": "concurrently -n server,web -c green,cyan \"npm run dev -w @pby/server\" \"npm run dev -w @pby/web\"",
+    "start": "node server/dist/index.js",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present && tsc -p e2e/tsconfig.json",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test": "npm run build:shared && vitest run",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^22.20.4",
+    "concurrently": "^10.0.5",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
+  }
+}
