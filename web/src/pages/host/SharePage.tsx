@@ -11,10 +11,24 @@ import type { HostContext } from './HostEvent';
 export function SharePage({ ctx }: { ctx: HostContext }) {
   const { snap, act, toast } = ctx;
   const [copied, setCopied] = useState(false);
+  const [tvCopied, setTvCopied] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
   useWakeLock(true);
   const url = snap.event.joinUrl;
   const shortUrl = url.replace(/^https?:\/\//, '');
   const qr = `/api/join/${snap.event.code}/qr.svg`;
+  const lobbyUrl = snap.event.lobbyUrl;
+  const closed = snap.event.status === 'closed';
+  const lobbyAction = async (path: string, text: string) => {
+    try {
+      await act(path);
+      setTvCopied(false);
+      setConfirmOff(false);
+      toast({ text });
+    } catch (err) {
+      toast({ text: errorMessage(err), danger: true });
+    }
+  };
 
   return (
     <main className="screen">
@@ -74,6 +88,85 @@ export function SharePage({ ctx }: { ctx: HostContext }) {
             Event code for helper phones: <b>{snap.event.code}</b>
           </p>
         </div>
+        <section className="no-print lobby-share" aria-labelledby="tv-title">
+          <h2 id="tv-title" className="group-label eyebrow">
+            Lobby display (TV)
+          </h2>
+          <p className="help" style={{ marginTop: 0 }}>
+            Shows Now serving and the next few tickets on a TV or tablet, with this QR code. Names
+            appear as "Emma R." (or tickets only if names are off). Anyone with the link can watch
+            it, so turn it off after the event.
+          </p>
+          {lobbyUrl ? (
+            <div className="stack">
+              <div className="mono" data-testid="lobby-url" style={{ margin: '4px 0' }}>
+                {lobbyUrl.replace(/^https?:\/\//, '')}
+              </div>
+              <div className="btn-pair">
+                <button
+                  type="button"
+                  className="btn primary"
+                  data-testid="open-on-tv"
+                  onClick={async () => setTvCopied(await copyText(lobbyUrl))}
+                >
+                  <Icon name="tv" /> {tvCopied ? 'Link copied ✓' : 'Open on TV'}
+                </button>
+                <a
+                  className="btn secondary"
+                  href={lobbyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="open-lobby-here"
+                >
+                  Open here
+                </a>
+              </div>
+              {tvCopied && (
+                <p className="help" style={{ margin: 0 }} role="status">
+                  Paste it into the TV's or tablet's browser.
+                </p>
+              )}
+              {confirmOff ? (
+                <div className="btn-pair">
+                  <button
+                    type="button"
+                    className="btn danger"
+                    onClick={() => void lobbyAction('/lobby/revoke', 'TV link turned off')}
+                  >
+                    Turn off
+                  </button>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={() => setConfirmOff(false)}
+                  >
+                    Keep it
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn danger-text"
+                  data-testid="lobby-off"
+                  onClick={() => setConfirmOff(true)}
+                >
+                  Turn off TV link
+                </button>
+              )}
+            </div>
+          ) : (
+            !closed && (
+              <button
+                type="button"
+                className="btn secondary left"
+                data-testid="lobby-create"
+                onClick={() => void lobbyAction('/lobby', 'TV link ready')}
+              >
+                <Icon name="tv" /> Make a TV link
+              </button>
+            )
+          )}
+        </section>
         <div className="no-print" style={{ marginTop: 8 }}>
           <Toggle
             label="Accept new guests"
