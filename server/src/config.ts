@@ -20,7 +20,12 @@ export interface Config {
   /** Base URL used in texted links and the QR code. Falls back to the creating request's origin. */
   publicUrl: string | null;
   cookieSecure: 'auto' | boolean;
-  trustProxy: boolean;
+  /**
+   * Fastify `trustProxy`: a hop count (default 1), an IP/CIDR list, or false. Never `true`:
+   * that trusts the left-most X-Forwarded-For entry, which any client can forge to dodge the
+   * per-IP rate limits (PIN, admin password, self-join).
+   */
+  trustProxy: number | string | false;
   retentionDays: number;
   autoCloseHours: number;
   optOutSalt: string | null;
@@ -37,6 +42,15 @@ function num(value: string | undefined, fallback: number): number {
 function bool(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined || value === '') return fallback;
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
+/** TRUST_PROXY: unset or `true` → 1 hop, `false`/`0` → off, `N` → N hops, else an IP/CIDR list. */
+function trustProxy(value: string | undefined): number | string | false {
+  const v = value?.trim().toLowerCase() ?? '';
+  if (v === '' || ['true', 'yes', 'on'].includes(v)) return 1;
+  if (['false', 'no', 'off', '0'].includes(v)) return false;
+  if (/^\d+$/.test(v)) return Number(v);
+  return value!.trim();
 }
 
 function defaultWebDist(): string | null {
@@ -68,7 +82,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     adminPassword: env.ADMIN_PASSWORD?.trim() || null,
     publicUrl: env.PUBLIC_URL?.trim().replace(/\/+$/, '') || null,
     cookieSecure: !cookieSecure || cookieSecure === 'auto' ? 'auto' : bool(cookieSecure, false),
-    trustProxy: bool(env.TRUST_PROXY, true),
+    trustProxy: trustProxy(env.TRUST_PROXY),
     retentionDays: num(env.RETENTION_DAYS, DEFAULTS.retentionDays),
     autoCloseHours: num(env.AUTO_CLOSE_HOURS, DEFAULTS.autoCloseHours),
     optOutSalt: env.OPTOUT_SALT?.trim() || null,

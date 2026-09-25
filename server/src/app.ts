@@ -51,7 +51,12 @@ export async function buildApp(
   opts: BuildOptions = {},
 ): Promise<{ app: FastifyInstance; ctx: AppContext }> {
   const app = Fastify({
-    trustProxy: cfg.trustProxy,
+    // A hop count becomes the same trust function proxy-addr would build (Fastify's types
+    // don't list the numeric form).
+    trustProxy:
+      typeof cfg.trustProxy === 'number'
+        ? (_addr: string, hop: number) => hop < (cfg.trustProxy as number)
+        : cfg.trustProxy,
     bodyLimit: 2 * 1024 * 1024,
     logger: {
       level: cfg.logLevel,

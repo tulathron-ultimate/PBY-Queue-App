@@ -467,3 +467,42 @@ describe('websocket', () => {
     ws.close();
   });
 });
+
+describe('QA regressions', () => {
+  it('rate-limits by the client IP a proxy appends, not a spoofed X-Forwarded-For', async () => {
+    const h = await setup();
+    const codes: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      // The attacker sends their own X-Forwarded-For; the proxy (Cloudflare, Fly) appends the
+      // real client address, so only the last entry is trustworthy.
+      const r = await h.app.inject({
+        method: 'POST',
+        url: '/api/host/login',
+        headers: { 'x-forwarded-for': `10.9.8.${i}, 203.0.113.7` },
+        payload: { eventId: h.eventId, pin: '000000' },
+      });
+      codes.push(r.statusCode);
+    }
+    expect(codes).toEqual([401, 401, 401, 401, 401, 429]);
+    // The same applies to the admin password (it guards event creation and Twilio spend).
+    const admin: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const r = await h.app.inject({
+        method: 'POST',
+        url: '/api/events',
+        headers: { 'x-forwarded-for': `10.9.7.${i}, 203.0.113.8` },
+        payload: { adminPassword: `guess-${i}`, name: 'X', pin: PIN },
+      });
+      admin.push(r.statusCode);
+    }
+    expect(admin.at(-1)).toBe(429);
+  });
+
+  it('parses TRUST_PROXY as a hop count, IP list or off', () => {
+    expect(loadConfig({}).trustProxy).toBe(1);
+    expect(loadConfig({ TRUST_PROXY: 'true' }).trustProxy).toBe(1);
+    expect(loadConfig({ TRUST_PROXY: '2' }).trustProxy).toBe(2);
+    expect(loadConfig({ TRUST_PROXY: 'false' }).trustProxy).toBe(false);
+    expect(loadConfig({ TRUST_PROXY: '172.16.0.0/12' }).trustProxy).toBe('172.16.0.0/12');
+  });
+});
