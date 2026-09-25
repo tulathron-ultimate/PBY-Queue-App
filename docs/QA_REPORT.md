@@ -116,7 +116,7 @@ documented deviation or an open item.
 | S2    | Tap-to-send            |   🔧   | Tray ordering, `sms:+1…&body=` on iOS and `?body=` on Android, one recipient per tap, suppression list honoured. Now also honours **No texts** (#5).                                                                                                                                                                                                                        |
 | S3    | Twilio                 |   🔧   | Credentials come from environment variables, and the toggle only appears when they are set; only US numbers are texted; the STOP footer goes on the first text to a number; error 21610 marks the number opted out. Texts interrupted by a restart are now handled (#9).                                                                                                    |
 | S4    | STOP / inbound webhook |   ✅   | Signature validated (including behind a tunnel); STOP, STOPALL, UNSUBSCRIBE, CANCEL, END and QUIT opt out, and START, UNSTOP and YES opt back in, matched case-insensitively against the whole message; opt-outs are stored as salted SHA-256 hashes, kept across events and through the purge.                                                                             |
-| G1    | Status page            |   🔧   | Ticket, position, state, who is up now, the wait estimate and the event name; live over WebSocket with 15 s polling as a fallback; unknown tokens get a generic 404. ⚠ The limit is now per link plus a per-IP miss limit (#7, documented in IMPLEMENTATION_NOTES).                                                                                                         |
+| G1    | Status page            |   🔧   | Ticket, position and "N ahead of you", state, who is up now and the event name (the wait estimate was removed by owner decision, G6); live over WebSocket with 15 s polling as a fallback; unknown tokens get a generic 404. ⚠ The limit is now per link plus a per-IP miss limit (#7, documented in IMPLEMENTATION_NOTES).                                                 |
 | G2    | Name privacy           |   🔧   | "Emma R.", or ticket numbers only when names are turned off. Now also applies to the guest's own name (#3).                                                                                                                                                                                                                                                                 |
 | P1    | PWA                    |   ✅   | Manifest (`standalone`), icons including a maskable one, app-shell caching with Workbox.                                                                                                                                                                                                                                                                                    |
 | P2    | Retention purge        |   ⚠    | Purges names, phones, members, notes, tokens, the SMS log, undo steps and sessions 7 days after close; keeps counts and the average service time; runs at startup and then daily, with `VACUUM` weekly; auto-closes after 12 h idle (tested). ⚠ Guest activity also counts as idle-breaking (#18).                                                                          |
@@ -124,16 +124,16 @@ documented deviation or an open item.
 
 ### Defaults and rules checked
 
-- **Defaults:** Up next N 2 (range 0–5, where 0 turns it off); estimate 3 min per party before
-  any data; mean of the last 5 samples, ignoring those under 15 s or over 20 min, clamped to
-  1–15 min; rounded up, and shown as `90+ min` above 90; party size 1–20 (default 1); 500 active
-  parties; 500 rows per import; 5 helper devices; 12 h sessions; 7-day retention.
+- **Defaults:** Up next N 2 (range 0–5, where 0 turns it off); no wait-time estimate (removed by
+  owner decision after this review, §2.3); party size 1–20 (default 1); 500 active parties; 500
+  rows per import; 5 helper devices; 12 h sessions; 7-day retention.
 - **Templates (worst case: 20-character event name, 12-character first name, 3-digit position,
-  `90+` wait, and a 48-character link, longer than the spec's 45):**
+  and a 48-character link, longer than the spec's 45; re-checked after the `{wait}` placeholder
+  was removed):**
 
   | Template  | Length | With STOP footer              |
   | --------- | -----: | ----------------------------- |
-  | join      |    129 | 152                           |
+  | join      |    117 | 140                           |
   | up_next   |    143 | 152 (after dropping the name) |
   | your_turn |     82 | 105                           |
   | skipped   |    149 | 158 (after dropping the name) |

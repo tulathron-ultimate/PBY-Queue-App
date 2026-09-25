@@ -178,7 +178,7 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
 .hero .pos { font-size:112px; line-height:112px; font-weight:900; letter-spacing:-.04em; }
 .hero .pos.word { font-size:76px; line-height:96px; letter-spacing:-.02em; }
 .hero .who { font-size:16px; font-weight:700; color:var(--text-muted); }
-.hero .eta { font-size:22px; line-height:30px; font-weight:600; margin-top:6px; }
+.hero .ahead { font-size:22px; line-height:30px; font-weight:600; margin-top:6px; }
 .hero .headline { font-size:22px; line-height:28px; font-weight:900; margin-bottom:4px; }
 .nowcard { margin-top:12px; border-radius:22px; padding:12px 16px; background:var(--serving-tint); border:2px solid var(--serving); display:flex; align-items:center; gap:14px; }
 .nowcard .n { font-size:52px; line-height:56px; font-weight:900; }
@@ -279,7 +279,7 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
         <button class="iconbtn" aria-label="Share"><svg><use href="#i-qr"/></svg></button>
         <button class="iconbtn" aria-label="More"><svg><use href="#i-more"/></svg></button></div>
       <div class="scroll">
-        <div class="counts">36 waiting · 12 done · ~3 min each</div>
+        <div class="counts">36 waiting · 12 done</div>
         <div class="serving-card">
           <div class="lbl"><span>● NOW SERVING</span><span>2:41</span></div>
           <div class="name"><span class="tk">#14</span>Garcia Family</div>
@@ -313,7 +313,7 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
       <div class="topbar"><div class="title">Pumpkin Patch Portraits</div><span class="live">Live</span>
         <button class="iconbtn"><svg><use href="#i-qr"/></svg></button><button class="iconbtn"><svg><use href="#i-more"/></svg></button></div>
       <div class="scroll">
-        <div class="counts">35 waiting · 13 done · ~3 min each</div>
+        <div class="counts">35 waiting · 13 done</div>
         <div class="serving-card"><div class="lbl"><span>● NOW SERVING</span><span>0:04</span></div>
           <div class="name"><span class="tk">#15</span>Nguyen Family</div><div class="meta">5 people</div></div>
       </div>
@@ -345,7 +345,7 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
       <div class="topbar"><div class="title">Pumpkin Patch Portraits</div><span class="live">Live</span>
         <button class="iconbtn"><svg><use href="#i-qr"/></svg></button><button class="iconbtn"><svg><use href="#i-more"/></svg></button></div>
       <div class="scroll">
-        <div class="counts">3 waiting · 38 done · ~3 min each</div>
+        <div class="counts">3 waiting · 38 done</div>
         <div class="serving-card"><div class="lbl"><span>● NOW SERVING</span><span>0:02</span></div>
           <div class="name"><span class="tk">#39</span>Johnson Twins</div><div class="meta">2 people · Ava, Mia</div>
           <div class="card-actions"><button><svg><use href="#i-check"/></svg>Done</button><button>No-show</button><button><svg><use href="#i-msg"/></svg>Text</button></div></div>
@@ -523,7 +523,7 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
       <div class="scroll" style="padding-top:12px">
         <div style="font-size:15px;font-weight:700;color:var(--text-muted)">Pumpkin Patch Portraits</div>
         <div style="font-size:30px;line-height:36px;font-weight:900;margin:2px 0 6px">Join the photo line</div>
-        <div class="badge b-waiting" style="height:30px;font-size:15px;margin-bottom:16px">18 groups ahead · about 45–55 min</div>
+        <div class="badge b-waiting" style="height:30px;font-size:15px;margin-bottom:16px">18 groups ahead of you</div>
         <div class="field"><label>Your name or family name</label><div class="input ph">e.g., Smith Family</div></div>
         <div class="field"><span class="flabel">How many people in the photo?</span><div class="stepper"><span>−</span><span class="val">1</span><span>+</span></div></div>
         <div class="field"><label>Mobile number</label><div class="input ph">(555) 555-5555</div><div class="help">We'll text you when you're almost up.</div></div>
@@ -544,7 +544,7 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
           <div class="lbl">Your place in line</div>
           <div class="pos">3</div>
           <div class="who">Ticket #17 · Smith Family · 4 people</div>
-          <div class="eta">About <b>5–10 min</b></div>
+          <div class="ahead">2 ahead of you</div>
         </div>
         <div class="nowcard"><span class="n">#15</span><div><div class="lbl">NOW TAKING PHOTOS</div><div class="nm">Nguyen Family</div></div></div>
         <div class="mini">
@@ -556,7 +556,7 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
         <div style="display:flex;justify-content:space-between"><span class="linkbtn">Change party size</span><span class="linkbtn" style="color:var(--danger)">Leave the line</span></div>
       </div>
     </div>
-    <figcaption>G2 My status: waiting<small>Answers three questions: where am I, who is up now, how long</small></figcaption>
+    <figcaption>G2 My status: waiting<small>Answers two questions: where am I, and who is up now</small></figcaption>
   </figure>
 
   <!-- G2 Up next dark -->
@@ -570,7 +570,6 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
           <div class="lbl">Head to the photo area now</div>
           <div class="pos word">Next</div>
           <div class="who">Ticket #17 · Smith Family · 4 people</div>
-          <div class="eta">Any minute now</div>
         </div>
         <div class="nowcard"><span class="n">#16</span><div><div class="lbl">NOW TAKING PHOTOS</div><div class="nm">Priya &amp; Dev</div></div></div>
         <div class="mini">
@@ -632,7 +631,7 @@ figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
         <div class="it"><span class="tk">#20</span>Martinez</div>
       </div>
       <div class="foot"><div class="q"><svg class="qrsvg" viewBox="0 0 29 29"></svg></div>
-        <div>Scan to join the line<small>pby.photos/j/pumpkin · about 3 min per group</small></div></div>
+        <div>Scan to join the line<small>pby.photos/j/pumpkin</small></div></div>
     </div>
     <figcaption>L1 Lobby display<small>Read-only; flashes green when a new party is called</small></figcaption>
   </figure>

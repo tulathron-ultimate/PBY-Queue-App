@@ -6,16 +6,15 @@ templates and rules), then `DESIGN.md`, and otherwise the simplest reasonable op
 
 ## Where FEATURES.md and DESIGN.md disagree (FEATURES.md used)
 
-| Topic              | DESIGN.md                              | Built (FEATURES.md)                                                                                                    |
-| ------------------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Message templates  | §7 wording, with 📸 emoji              | §2.4 templates exactly (GSM-7, no emoji), plus the §2.4 overflow rules                                                 |
-| Up next threshold  | 1–10                                   | 0–5, default 2; 0 turns Up next off                                                                                    |
-| Undo toast         | 6 s                                    | 10 s, plus a persistent Undo button in the top bar                                                                     |
-| Party size         | 1–30                                   | 1–20                                                                                                                   |
-| Host PIN           | 4–6 digits                             | 6–12 digits or letters, scrypt-hashed                                                                                  |
-| Wait display       | a 5-minute range from a rolling median | `~X min` from the mean of the last 5 valid samples, `90+ min` above 90, "Any minute now" for 0 (DESIGN §1.7 copy rule) |
-| Call next button   | 80 px tall                             | at least 25% of the screen height (Q2), never under 80 px                                                              |
-| Twilio credentials | entered per event in the UI            | server env vars only; the "Automatic" option appears only when they are set                                            |
+| Topic              | DESIGN.md                   | Built (FEATURES.md)                                                         |
+| ------------------ | --------------------------- | --------------------------------------------------------------------------- |
+| Message templates  | §7 wording, with 📸 emoji   | §2.4 templates exactly (GSM-7, no emoji), plus the §2.4 overflow rules      |
+| Up next threshold  | 1–10                        | 0–5, default 2; 0 turns Up next off                                         |
+| Undo toast         | 6 s                         | 10 s, plus a persistent Undo button in the top bar                          |
+| Party size         | 1–30                        | 1–20                                                                        |
+| Host PIN           | 4–6 digits                  | 6–12 digits or letters, scrypt-hashed                                       |
+| Call next button   | 80 px tall                  | at least 25% of the screen height (Q2), never under 80 px                   |
+| Twilio credentials | entered per event in the UI | server env vars only; the "Automatic" option appears only when they are set |
 
 ## Queue rules
 
@@ -23,9 +22,12 @@ templates and rules), then `DESIGN.md`, and otherwise the simplest reasonable op
   guest's position is `1 + arrived active parties ahead`. Otherwise an imported roster of 200
   not-yet-arrived families would show the first arrival "#150 in line" while being next. Up next
   goes to the first N _arrived_ parties, the ones that will actually be called.
-- **Wait estimate** uses `parties_ahead = arrived parties ahead + 1 if someone is being served`,
-  times the average (§2.3). Guests who have not checked in see no estimate, and a big **I'm here**
-  button instead.
+- **No wait-time estimates** (owner decision, FEATURES §2.3 and G6): the estimate, its service-time
+  samples and the "Minutes per party" setting were removed from the guest page, the join page,
+  the host dashboard, Settings and the join text. Guests see their position and "N ahead of you"
+  (arrived parties ahead). The `events.minutes_per_party`, `events.samples` and
+  `undo_stack.samples` columns are kept for existing databases but are no longer read. Guests
+  who have not checked in see a big **I'm here** button instead of the "ahead" line.
 - **Who starts as arrived:** manual adds and self-joins are arrived (the host is looking at them;
   a guest scanning the QR is on site). Excel/CSV, vCard and Contact Picker imports start as not
   arrived, with an "Everyone is here already" option in the import preview.
@@ -35,7 +37,7 @@ templates and rules), then `DESIGN.md`, and otherwise the simplest reasonable op
   button on the Now-serving card became "Not here"; the 3rd "Not here" makes a party `no_show`
   (§2.6). Parties can also be served out of order with **Serve now** (DESIGN H4).
 - **Done without calling the next party:** the Now-serving card's **Done** marks the current party
-  done without calling anyone. Its service time counts as a sample.
+  done without calling anyone.
 - **Undo** covers queue actions (Call next, Done, Not here, Serve now, Move, Remove, Back in line,
   check in / out). The server keeps the last 20 per event and restores the queue fields of every
   party in the snapshot; parties added since are kept. Adding, importing and editing details are

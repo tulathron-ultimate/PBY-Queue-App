@@ -2,8 +2,9 @@
 
 A photo-line queue for Photos by Yaz. The photographer (the "host") imports or adds families,
 calls the next party with one thumb, and guests get texted when they are **Up next** and when
-**it's their turn**. Every guest has a private live page showing their place in line, who is
-being photographed now, and roughly how long they will wait.
+**it's their turn**. Every guest has a private live page showing their place in line, how many
+parties are ahead of them, and who is being photographed now. There are no wait-time estimates
+(the owner's decision: the pace varies too much to predict).
 
 | Host dashboard                                         | Guest status                                       | Guest: it's your turn                              |
 | ------------------------------------------------------ | -------------------------------------------------- | -------------------------------------------------- |
@@ -27,8 +28,9 @@ design are in [`docs/`](docs); choices made where the specs were open are in
   Undo. The screen stays awake and the phone buzzes on Call next.
 - **Texting**: tap-to-send by default (the host's phone opens Messages with the text filled in,
   one tap per text), or automatic sending through Twilio. STOP / START are honoured.
-- **Guests**: live status page (WebSocket with polling fallback) with privacy-filtered names
-  ("Emma R."), "I'm here" check-in, and a full-screen "It's your turn".
+- **Guests**: live status page (WebSocket with polling fallback) with their place in line and
+  how many are ahead (no wait-time estimate), privacy-filtered names ("Emma R."), "I'm here"
+  check-in, and a full-screen "It's your turn".
 - **Privacy**: guest data is purged 7 days after an event closes, phone numbers are masked in
   logs, SMS bodies are never stored.
 - **Installable PWA**, light theme tuned for sunlight, dark and max-contrast modes.
@@ -36,8 +38,8 @@ design are in [`docs/`](docs); choices made where the specs were open are in
 ## Architecture
 
 ```
-shared/   Types and pure logic used by both sides: queue state machine, wait estimates,
-          phone normalization, SMS templates, name privacy, vCard and Excel row parsing.
+shared/   Types and pure logic used by both sides: queue state machine, phone
+          normalization, SMS templates, name privacy, vCard and Excel row parsing.
 server/   Node 22 + Fastify + better-sqlite3 + @fastify/websocket. Serves the API, the
           WebSocket feed, the Twilio webhook and the built web app.
 web/      React + Vite + TypeScript PWA. Device-specific code lives in web/src/platform/
@@ -226,7 +228,7 @@ Default messages (GSM-7, at most 160 characters):
 
 | When                                     | Text                                                                                       |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Joined / imported (optional for imports) | `{event}: {name}, you're #{pos} in line (~{wait} min). Track live: {link}`                 |
+| Joined / imported (optional for imports) | `{event}: {name}, you're #{pos} in line. Track live: {link}`                               |
 | Up next                                  | `{event}: {name}, you're up next! Please head to the photo area now. Status: {link}`       |
 | Your turn                                | `{event}: {name}, it's your turn! Please come to the camera now.`                          |
 | Missed                                   | `{event}: {name}, we called you but missed you. Find the host to get back in line: {link}` |
