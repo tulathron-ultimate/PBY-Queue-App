@@ -199,3 +199,60 @@ describe('SEC-18 lobby token misses are keyed by IPv6 /64', () => {
     expect((await lobby(h, token, '2001:db8:1:3::1')).statusCode).toBe(200);
   });
 });
+
+describe('SEC-19 "we\'re paused" texts go at most once per party per hour', () => {
+  it('toggling pause and resume does not re-text everyone in Twilio mode', async () => {
+    const h = await setup(TWILIO_ENV);
+    await fiveParties(h);
+    await h.ctx.service.pendingDispatch;
+    h.sent.length = 0;
+    await host(h, 'POST', '/pause', { notify: true });
+    await h.ctx.service.pendingDispatch;
+    const first = h.sent.length;
+    expect(first).toBe(5);
+    for (let i = 0; i < 5; i++) {
+      advance(2000);
+      expect((await host(h, 'POST', '/resume')).statusCode).toBe(200);
+      advance(2000);
+      expect((await host(h, 'POST', '/pause', { notify: true })).statusCode).toBe(200);
+      await h.ctx.service.pendingDispatch;
+    }
+    expect(h.sent).toHaveLength(first);
+    // A real second break more than an hour later texts again.
+    advance(3_600_000);
+    await host(h, 'POST', '/resume');
+    await host(h, 'POST', '/pause', { notify: true });
+    await h.ctx.service.pendingDispatch;
+    expect(h.sent).toHaveLength(first * 2);
+  });
+
+  it('a fast pause/resume/pause does not queue a second copy behind the first', async () => {
+    const h = await setup(TWILIO_ENV);
+    await fiveParties(h);
+    await h.ctx.service.pendingDispatch;
+    h.sent.length = 0;
+    // No awaiting between the calls: the first batch is still `sending` when the line is
+    // paused again, so it goes out; the second pause must not add a copy for anyone.
+    await host(h, 'POST', '/pause', { notify: true });
+    await host(h, 'POST', '/resume');
+    await host(h, 'POST', '/pause', { notify: true });
+    await h.ctx.service.pendingDispatch;
+    await settle();
+    const to = h.sent.map((m) => m.to);
+    expect(new Set(to).size).toBe(to.length);
+  });
+
+  it('tray texts the host already sent are not offered again on the next pause', async () => {
+    const h = await setup();
+    await fiveParties(h);
+    let s: HostSnapshot = (await host(h, 'POST', '/pause', { notify: true })).json();
+    const paused = s.pendingTexts.filter((t) => t.template === 'paused');
+    expect(paused).toHaveLength(5);
+    for (const t of paused) await host(h, 'POST', `/texts/${t.id}`, { status: 'sent' });
+    advance(2000);
+    await host(h, 'POST', '/resume');
+    advance(2000);
+    s = (await host(h, 'POST', '/pause', { notify: true })).json();
+    expect(s.pendingTexts.filter((t) => t.template === 'paused')).toHaveLength(0);
+  });
+});

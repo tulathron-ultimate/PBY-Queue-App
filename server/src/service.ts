@@ -98,6 +98,9 @@ type MutationResult = QueueResult<PartyRecord> & { extraEffects?: TextEffect[] }
 
 const UNDO_KEEP = 20;
 
+/** A party gets at most one broadcast "we're paused" text in this window (SEC-19). */
+const PAUSED_TEXT_WINDOW_MS = 3_600_000;
+
 const PAUSED_ERROR = () =>
   new ServiceError(409, 'paused', 'The line is paused. Resume it to call the next party.');
 
@@ -622,9 +625,25 @@ export class QueueService {
       if (event.paused)
         throw new ServiceError(409, 'already_paused', 'The line is already paused.');
       this.store.updateEvent(eventId, { paused: true, pauseMessage: message, pausedAt: now });
-      const extraEffects = input.notify === true ? pausedTextEffects(parties) : [];
+      // SEC-19: at most one "we're paused" text per party per hour, so toggling Pause/Resume
+      // (or two helpers pausing in turn) can't re-text the whole line each time. Texts that
+      // were canceled before going out don't count.
+      const told = this.recentlyToldPaused(eventId, now);
+      const extraEffects =
+        input.notify === true ? pausedTextEffects(parties).filter((e) => !told.has(e.partyId)) : [];
       return { parties, effects: [], extraEffects };
     });
+  }
+
+  /** Parties sent (or about to be sent) a `paused` text in the last hour. */
+  private recentlyToldPaused(eventId: string, now: number): Set<string> {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT party_id FROM sms_log WHERE event_id = ? AND template = 'paused'
+           AND status != 'canceled' AND created_at > ?`,
+      )
+      .all(eventId, now - PAUSED_TEXT_WINDOW_MS) as { party_id: string }[];
+    return new Set(rows.map((r) => r.party_id));
   }
 
   /** E6 Resume: Call next works again and the Up next texts held during the pause go out. */

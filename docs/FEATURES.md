@@ -235,7 +235,7 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 | Message | Optional, ≤**120** characters, text only: control and bidi characters are removed. Shown on guest status pages, the lobby display and the host dashboard. It is not put in texts. |
 | While paused | Call next is refused (dashboard: disabled, "Line paused"). "Not here" marks the party skipped but calls nobody else. Serve now still works (an explicit host choice). Parties still move into `up_next` so pages stay correct, but **no Up next texts go out**: Twilio sends none, and tray texts queued before the pause are held out of the tray. "Text now" on a waiting party sends the `paused` text instead of Up next. |
 | Resume | Call next works again. Up next texts that were held go out once (the "sent once per entry" rule of §2.2 still applies). Queued `paused` texts that were not sent yet are dropped. |
-| "We're paused" text | Optional, **off by default**. One `paused` text per party waiting (arrived or not), at most once per pause, through the tray or Twilio per the event's mode. It follows No texts, consent and the opt-out list like every text, and in Twilio mode it counts toward the hourly `SELF_JOIN_TEXTS_PER_HOUR` cap. |
+| "We're paused" text | Optional, **off by default**. One `paused` text per party waiting (arrived or not), at most once per party per hour (so toggling Pause/Resume doesn't re-text anyone), through the tray or Twilio per the event's mode. It follows No texts, consent and the opt-out list like every text, and in Twilio mode it counts toward the hourly `SELF_JOIN_TEXTS_PER_HOUR` cap. |
 | Undo | Pause and Resume are undoable. Every undo step also records the pause state it replaces. |
 
 ### 2.14 Lobby display link (G5, v1.1)
