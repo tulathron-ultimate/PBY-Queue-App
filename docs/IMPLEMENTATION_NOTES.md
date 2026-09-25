@@ -121,11 +121,48 @@ templates and rules), then `DESIGN.md`, and otherwise the simplest reasonable op
 - The Docker image installs with `--ignore-scripts`: better-sqlite3 13 ships prebuilt binaries for
   glibc/musl on x64/arm64 and nothing else needs an install script, so no compiler is needed.
 
+## v1.1: pause, lobby display, results CSV
+
+- **Pause keeps states, holds texts.** While paused, `recomputeUpNext` still moves parties into
+  `up_next` (so guest pages and the lobby stay right), and the shared `holdUpNextTexts` drops the
+  Up next texts and leaves `upNextSent` unset. On Resume the same recompute texts every in-range
+  party whose flag is unset, once. Tray texts queued before the pause stay in the database but
+  are left out of host snapshots until Resume, so they can't be sent by accident.
+- **Paused "Not here"** marks the party skipped and calls nobody (`skipCurrent(..., callNext:
+false)`). **Serve now** still works while paused: it is an explicit choice by the host.
+- **"Text now" while paused** sends the `paused` text to a waiting party instead of Up next.
+- **The pause message is not in the text.** A 120-character host message could not fit a
+  160-character GSM-7 text with a 45-character link, so the text says the line is paused and
+  links to the status page, where the message is shown.
+- **Undo steps record the pause state** (`undo_stack.event_state`), so undoing Pause, Resume or
+  anything done while paused restores the right state. Older steps have none and leave it as is.
+- **Twilio cap:** broadcast `paused` texts count toward `SELF_JOIN_TEXTS_PER_HOUR` (a security
+  review requirement); they are not themselves held back by it, because the host chose to send
+  them.
+- **Lobby link:** a separate 144-bit token rather than FEATURES G5's `/e/{eventCode}/board`,
+  because the join code is public (it is on the QR sign) and the owner asked for a revocable,
+  unguessable link. It is created on demand, never by default. The database keeps the token (so
+  helper devices can show it) plus its SHA-256 for lookups, then compares in constant time.
+- **Lobby shows 5 upcoming tickets**, where the guest page shows 3. The fields are the same kind
+  (ticket plus "Emma R."), and the list is what anyone standing at the venue sees on the board.
+  The first ticket is amber (next to be called) rather than the first N, so the payload does not
+  need the Up next setting.
+- **CSV export** is a fetch + blob download, which behaves the same on iPhone Safari (iOS 13+,
+  including the installed app) and Android Chrome and turns a failed request into an error toast.
+  The server also sends `Content-Disposition: attachment`, so the URL works directly too. Times
+  use the device's time zone (`?tz=`), falling back to UTC. A party being photographed at export
+  time has status `now_serving`. Check-in times are recorded from this version on
+  (`parties.arrived_at`); older rows are blank.
+- **Tests:** `server/test/harness.ts` is a small copy of the `api.test.ts` harness for the new
+  test files, so that file stays untouched apart from its migration test, which now builds a
+  version-1 database from the first migration instead of dropping columns.
+
 ## Not built in the MVP (by the specs' release column or deliberately)
 
-- v1.1 / Later items: pause ("On break"), editable templates, CSV export, group filter chips,
+- Built in v1.1: pause (E6), results CSV (E8), lobby display (G5).
+- v1.1 / Later items still open: editable templates, group filter chips,
   drag-and-drop reorder, delivery status, one-off custom texts, leave line / change party size on
-  the guest page, lobby/TV display, multi-language, Web Push, offline queueing of host actions
+  the guest page, multi-language, Web Push, offline queueing of host actions
   (the dashboard shows an offline banner; actions need a connection), and the Capacitor wrap.
 - The queue list uses `content-visibility: auto` rather than a virtualization library, which keeps
   300–500 simple rows cheap to render. It has not been profiled on a low-end phone yet.
