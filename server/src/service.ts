@@ -77,7 +77,10 @@ export interface AddOptions {
   consent?: boolean;
 }
 
-type MutationResult = QueueResult<PartyRecord> & { extraEffects?: SmsEffect[] };
+/** A text to create. `tray` puts it in the host's tap-to-send tray even in Twilio mode. */
+type TextEffect = SmsEffect & { tray?: boolean };
+
+type MutationResult = QueueResult<PartyRecord> & { extraEffects?: TextEffect[] };
 
 const UNDO_KEEP = 20;
 
@@ -303,15 +306,16 @@ export class QueueService {
   private createTexts(
     event: EventRecord,
     parties: readonly PartyRecord[],
-    effects: readonly SmsEffect[],
+    effects: readonly TextEffect[],
     now: number,
   ): { ids: number[]; twilioIds: number[] } {
     const ids: number[] = [];
     const twilioIds: number[] = [];
     const footerGiven = new Set<string>();
     // Tap-to-send never sends from the server: its texts wait in the host's tray as `pending`.
-    const provider = this.usesTwilio(event) ? 'twilio' : tapToSend.name;
+    const eventProvider = this.usesTwilio(event) ? 'twilio' : tapToSend.name;
     for (const effect of effects) {
+      const provider = effect.tray ? tapToSend.name : eventProvider;
       const party = parties.find((p) => p.id === effect.partyId);
       if (!party || !this.canText(event, party)) continue;
       const footer =
@@ -637,15 +641,34 @@ export class QueueService {
       this.store.updateEvent(eventId, { nextTicket: ticket });
       const r = addToQueue(parties, added, event.upNextN, opts.position);
       const upNextTexted = new Set(r.effects.map((e) => e.partyId));
-      const joinTexts: SmsEffect[] = opts.sendJoinText
+      // QA #15: anyone with the QR code can self-join with any US number, and each join text
+      // costs the owner money in Twilio mode. Past the hourly cap the party still joins, and its
+      // join text waits in the host's tray instead of going out automatically.
+      const tray =
+        opts.source === 'self' && this.usesTwilio(event) && this.selfJoinTextCapReached(event, now);
+      const joinTexts: TextEffect[] = opts.sendJoinText
         ? added
             .filter((p) => !upNextTexted.has(p.id))
-            .map((p) => ({ partyId: p.id, template: 'join' as const }))
+            .map((p) => ({ partyId: p.id, template: 'join' as const, tray }))
         : [];
       added = added.map((a) => r.parties.find((p) => p.id === a.id)!);
       return { ...r, extraEffects: joinTexts };
     });
     return added;
+  }
+
+  /** Twilio join texts for self-joins in the last hour have reached the cap (QA #15). */
+  private selfJoinTextCapReached(event: EventRecord, now: number): boolean {
+    const { n } = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM sms_log s JOIN parties p ON p.id = s.party_id
+         WHERE s.event_id = ? AND s.template = 'join' AND s.provider = 'twilio'
+           AND p.source = 'self' AND s.created_at > ?`,
+      )
+      .get(event.id, now - 3_600_000) as { n: number };
+    const reached = n >= this.cfg.selfJoinTextsPerHour;
+    if (reached) this.log.warn({ event: event.id }, 'self-join text cap reached; using the tray');
+    return reached;
   }
 
   /** A5 self-join. One active party per phone: a duplicate returns the existing link. */

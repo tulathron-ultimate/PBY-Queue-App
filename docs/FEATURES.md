@@ -194,6 +194,7 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 | Host session | An HttpOnly, Secure, SameSite=Lax cookie, valid for 12 h and cleared when the event closes. |
 | Status endpoint | 60 req/min per IP. An unknown token returns a generic 404. |
 | Self-join | **60 joins per (IP, event) per 10 min**, configurable with the `SELF_JOIN_PER_IP` env var. Keyed per event because families at one venue share a Wi-Fi or carrier NAT address (was 10 per IP; changed by owner decision after QA #13). One active party per phone per event (a duplicate returns the existing status link). Honeypot field; no CAPTCHA in MVP. The 500 active-party cap (§2.7) still applies. |
+| Twilio join texts from self-join | **60 per event per hour** (env `SELF_JOIN_TEXTS_PER_HOUR`), so strangers with the QR code can't run up the Twilio bill by joining with numbers they know. Parties over the cap still join; their join text is not sent automatically and instead waits in the host's "Texts to send" tray, with a banner on the dashboard (QA #15). Host-added parties and Up next / Your turn texts are not capped. |
 
 ### 2.11 SMS opt-out & Twilio compliance
 

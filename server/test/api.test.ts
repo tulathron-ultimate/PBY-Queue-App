@@ -563,6 +563,47 @@ describe('host snapshots carry no rendered texts (QA #17)', () => {
   });
 });
 
+describe('Twilio self-join text cap (QA #15)', () => {
+  it('caps automatic join texts per event per hour; the rest wait in the tray', async () => {
+    const h = await setup({
+      TWILIO_ACCOUNT_SID: 'AC123',
+      TWILIO_AUTH_TOKEN: 'secret-token',
+      TWILIO_FROM: '+15550001111',
+      SELF_JOIN_TEXTS_PER_HOUR: '2',
+    });
+    // Three parties already in line, so self-joiners get a join text (not Up next).
+    for (const n of ['A One', 'B Two', 'C Three']) await addManual(h, n);
+    const join = (i: number) =>
+      h.app.inject({
+        method: 'POST',
+        url: `/api/join/${h.code}`,
+        headers: { 'x-forwarded-for': `203.0.113.${i}` },
+        payload: { name: `Guest ${i}`, phone: `555-201-88${10 + i}`, consent: true },
+      });
+    for (let i = 0; i < 4; i++) {
+      expect((await join(i)).statusCode).toBe(200); // everyone still joins
+      await h.ctx.service.pendingDispatch;
+    }
+    expect(h.sent.map((m) => m.to)).toEqual(['+15552018810', '+15552018811']);
+    // The host sees the other two in the Texts to send tray.
+    const s = await snap(h);
+    expect(s.pendingTexts.map((t) => [t.template, t.to])).toEqual([
+      ['join', '+15552018812'],
+      ['join', '+15552018813'],
+    ]);
+    // Host-added parties are not capped.
+    await addManual(h, 'Walk Up', '555-201-8899');
+    await h.ctx.service.pendingDispatch;
+    expect(h.sent.at(-1)!.to).toBe('+15552018899');
+    // An hour later automatic join texts resume for self-joins.
+    advance(3_600_000 + 1);
+    expect((await join(4)).statusCode).toBe(200);
+    await h.ctx.service.pendingDispatch;
+    expect(h.sent.at(-1)!.to).toBe('+15552018814');
+    expect(loadConfig({}).selfJoinTextsPerHour).toBe(60);
+  });
+});
+
 describe('retention', () => {
   it('purges party data 7 days after close and keeps aggregates', async () => {
     const h = await setup();

@@ -30,6 +30,8 @@ export const DEFAULTS = {
   sessionHours: 12,
   /** Self-joins per (IP, event) per 10 minutes (§2.10); env SELF_JOIN_PER_IP. */
   selfJoinPerIp: 60,
+  /** Twilio join texts from self-join per event per hour; env SELF_JOIN_TEXTS_PER_HOUR. */
+  selfJoinTextsPerHour: 60,
 } as const;
 
 /** PIN: 6–12 chars, digits or letters (§2.10). */
