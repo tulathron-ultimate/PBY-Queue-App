@@ -28,6 +28,8 @@ export interface Config {
   trustProxy: number | string | false;
   retentionDays: number;
   autoCloseHours: number;
+  /** Self-joins allowed per (IP, event) per 10 minutes (§2.10). */
+  selfJoinPerIp: number;
   optOutSalt: string | null;
   twilio: TwilioConfig | null;
   webDist: string | null;
@@ -93,6 +95,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: trustProxy(env.TRUST_PROXY),
     retentionDays: num(env.RETENTION_DAYS, DEFAULTS.retentionDays),
     autoCloseHours: num(env.AUTO_CLOSE_HOURS, DEFAULTS.autoCloseHours),
+    selfJoinPerIp: Math.max(1, Math.floor(num(env.SELF_JOIN_PER_IP, DEFAULTS.selfJoinPerIp))),
     optOutSalt: env.OPTOUT_SALT?.trim() || null,
     twilio,
     webDist: env.WEB_DIST?.trim() || defaultWebDist(),

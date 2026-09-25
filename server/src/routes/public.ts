@@ -123,7 +123,9 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
     if (typeof body.website === 'string' && body.website.trim()) {
       throw new ServiceError(400, 'bad_request', 'Request failed.');
     }
-    if (!limits.join.hit(req.ip)) {
+    // Keyed on (IP, event): a venue's shared Wi-Fi or carrier NAT address has one budget per
+    // event, and the honeypot, one active party per phone and the 500-party cap still apply.
+    if (!limits.join.hit(`${req.ip} ${req.params.code.toUpperCase()}`, service.now())) {
       throw new ServiceError(
         429,
         'rate_limited',

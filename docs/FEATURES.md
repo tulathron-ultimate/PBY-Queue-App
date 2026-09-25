@@ -193,7 +193,7 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 | PIN brute force | 5 failures per IP per minute causes a 60 s block. 20 failures per event per hour lock the event for 15 min. |
 | Host session | An HttpOnly, Secure, SameSite=Lax cookie, valid for 12 h and cleared when the event closes. |
 | Status endpoint | 60 req/min per IP. An unknown token returns a generic 404. |
-| Self-join | 10 joins per IP per 10 min. One active party per phone per event (a duplicate returns the existing status link). Honeypot field; no CAPTCHA in MVP. |
+| Self-join | **60 joins per (IP, event) per 10 min**, configurable with the `SELF_JOIN_PER_IP` env var. Keyed per event because families at one venue share a Wi-Fi or carrier NAT address (was 10 per IP; changed by owner decision after QA #13). One active party per phone per event (a duplicate returns the existing status link). Honeypot field; no CAPTCHA in MVP. The 500 active-party cap (§2.7) still applies. |
 
 ### 2.11 SMS opt-out & Twilio compliance
 

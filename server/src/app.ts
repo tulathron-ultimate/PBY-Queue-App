@@ -30,6 +30,7 @@ export interface AppContext {
     status: RateLimiter;
     /** Requests per known status link. */
     statusToken: RateLimiter;
+    /** Self-joins per (IP, event), so families on one venue Wi-Fi don't share one budget. */
     join: RateLimiter;
   };
   setHostCookie(req: FastifyRequest, reply: FastifyReply, eventId: string, token: string): void;
@@ -84,7 +85,7 @@ export async function buildApp(
       admin: new RateLimiter(5, 60_000, 60_000),
       status: new RateLimiter(60, 60_000),
       statusToken: new RateLimiter(60, 60_000),
-      join: new RateLimiter(10, 10 * 60_000),
+      join: new RateLimiter(cfg.selfJoinPerIp, 10 * 60_000),
     },
     setHostCookie(req, reply, eventId, token) {
       reply.setCookie(Sessions.cookieName(eventId), token, {

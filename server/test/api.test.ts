@@ -309,10 +309,38 @@ describe('queue flow (tap-to-send)', () => {
     expect((await join({ name: 'Late' })).statusCode).toBe(409);
   });
 
-  it('rate-limits self-join to 10 per IP per 10 minutes', async () => {
+  it('limits self-join per (IP, event) to 60 per 10 minutes (QA #13)', async () => {
     const h = await setup();
+    const other = await h.app.inject({
+      method: 'POST',
+      url: '/api/events',
+      payload: { adminPassword: ADMIN, name: 'Santa Photos', pin: PIN },
+    });
+    const join = (code: string, i: number) =>
+      h.app.inject({
+        method: 'POST',
+        url: `/api/join/${code}`,
+        headers: { 'x-forwarded-for': '198.51.100.20' }, // one venue Wi-Fi
+        payload: { name: `Guest ${i}` },
+      });
+    // 60 families behind one shared address all get in; the 61st in 10 minutes is refused.
     const codes: number[] = [];
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 61; i++) codes.push((await join(h.code, i)).statusCode);
+    expect(codes.slice(0, 60).every((c) => c === 200)).toBe(true);
+    expect(codes[60]).toBe(429);
+    // The same address can still join a different event: the budget is per event.
+    expect((await join(other.json().code, 0)).statusCode).toBe(200);
+    // And the window slides: 10 minutes later the venue can join again.
+    advance(10 * 60_000 + 1);
+    expect((await join(h.code, 61)).statusCode).toBe(200);
+  });
+
+  it('reads SELF_JOIN_PER_IP from the environment', async () => {
+    expect(loadConfig({}).selfJoinPerIp).toBe(60);
+    expect(loadConfig({ SELF_JOIN_PER_IP: '5' }).selfJoinPerIp).toBe(5);
+    const h = await setup({ SELF_JOIN_PER_IP: '2' });
+    const codes: number[] = [];
+    for (let i = 0; i < 3; i++) {
       const r = await h.app.inject({
         method: 'POST',
         url: `/api/join/${h.code}`,
@@ -320,8 +348,7 @@ describe('queue flow (tap-to-send)', () => {
       });
       codes.push(r.statusCode);
     }
-    expect(codes.slice(0, 10).every((c) => c === 200)).toBe(true);
-    expect(codes[10]).toBe(429);
+    expect(codes).toEqual([200, 200, 429]);
   });
 
   it('never predicts a wait time: no estimate in guest, join, host or text payloads', async () => {
