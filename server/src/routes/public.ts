@@ -121,18 +121,28 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
 
   /* ------------------------------------------------------------ guests */
 
-  /** Join page info. Unknown codes count toward the same per-IP miss limit as status tokens. */
-  app.get<{ Params: { code: string } }>('/api/join/:code', async (req) => {
+  /**
+   * Looks up a join code for a guest-facing route. Unknown codes count toward the same per-IP
+   * miss limit as status tokens on every route that answers 404 for them (QA #16, SEC-4), so
+   * none of them is an unlimited oracle for guessing codes.
+   */
+  const joinEvent = (ip: string, code: string) => {
     const now = service.now();
-    if (limits.status.retryAfter(req.ip, now) > 0) {
+    if (limits.status.retryAfter(ip, now) > 0) {
       throw new ServiceError(429, 'rate_limited', 'Too many requests. Try again in a minute.');
     }
-    const info = service.joinInfo(req.params.code);
-    if (!info) {
-      limits.status.hit(req.ip, now);
+    const event = service.store.getEventByCode(code);
+    if (!event || event.purgedAt) {
+      limits.status.hit(ip, now);
       throw new ServiceError(404, 'not_found', 'Not found.');
     }
-    return info;
+    return event;
+  };
+
+  /** Join page info. */
+  app.get<{ Params: { code: string } }>('/api/join/:code', async (req) => {
+    const event = joinEvent(req.ip, req.params.code);
+    return service.joinInfo(event.code)!;
   });
 
   app.post<{ Params: { code: string } }>('/api/join/:code', async (req) => {
@@ -141,21 +151,22 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
     if (typeof body.website === 'string' && body.website.trim()) {
       throw new ServiceError(400, 'bad_request', 'Request failed.');
     }
+    const event = joinEvent(req.ip, req.params.code);
     // Keyed on (IP, event): a venue's shared Wi-Fi or carrier NAT address has one budget per
     // event, and the honeypot, one active party per phone and the 500-party cap still apply.
-    if (!limits.join.hit(`${req.ip} ${req.params.code.toUpperCase()}`, service.now())) {
+    // Only real codes become keys, so attacker-chosen strings can't grow the map (SEC-4).
+    if (!limits.join.hit(`${req.ip} ${event.code}`, service.now())) {
       throw new ServiceError(
         429,
         'rate_limited',
         'Too many sign-ups from this network. Try again soon.',
       );
     }
-    return service.selfJoin(req.params.code, body);
+    return service.selfJoin(event.code, body);
   });
 
   app.get<{ Params: { code: string } }>('/api/join/:code/qr.svg', async (req, reply) => {
-    const event = service.store.getEventByCode(req.params.code);
-    if (!event || event.purgedAt) throw new ServiceError(404, 'not_found', 'Not found.');
+    const event = joinEvent(req.ip, req.params.code);
     const svg = await QRCode.toString(joinLink(event), {
       type: 'svg',
       margin: 2,

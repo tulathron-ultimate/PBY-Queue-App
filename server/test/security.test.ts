@@ -185,3 +185,42 @@ describe('SEC-3 purge really deletes', () => {
     }
   });
 });
+
+describe('SEC-4 join codes cannot be enumerated through other endpoints', () => {
+  const randomCode = (i: number) => `Z${String(i).padStart(5, '0')}`;
+
+  it('counts unknown codes on POST /api/join/:code as misses and keeps no state for them', async () => {
+    const h = await setup();
+    const codes: number[] = [];
+    for (let i = 0; i < 70; i++) {
+      const r = await h.app.inject({
+        method: 'POST',
+        url: `/api/join/${randomCode(i)}`,
+        payload: { name: 'Probe', phone: '' },
+      });
+      codes.push(r.statusCode);
+    }
+    expect(codes.slice(0, 60).every((c) => c === 404)).toBe(true);
+    expect(codes.at(-1)).toBe(429);
+    // Attacker-chosen codes must not become rate-limiter keys (unbounded memory).
+    expect(h.ctx.limits.join['hits'].size).toBe(0);
+    // Real guests on the real code are unaffected from another address.
+    const ok = await h.app.inject({
+      method: 'POST',
+      url: `/api/join/${h.code}`,
+      headers: { 'x-forwarded-for': '198.51.100.9' },
+      payload: { name: 'Real Guest', phone: '' },
+    });
+    expect(ok.statusCode).toBe(200);
+  });
+
+  it('counts unknown codes on the QR endpoint as misses', async () => {
+    const h = await setup();
+    let last = 0;
+    for (let i = 0; i < 61; i++) {
+      last = (await h.app.inject({ method: 'GET', url: `/api/join/${randomCode(i)}/qr.svg` }))
+        .statusCode;
+    }
+    expect(last).toBe(429);
+  });
+});
