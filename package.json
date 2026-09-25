@@ -14,7 +14,7 @@
   "scripts": {
     "build:shared": "npm run build -w @pby/shared",
     "build": "npm run build:shared && npm run build -w @pby/server && npm run build -w @pby/web",
-    "dev": "npm run build:shared && node --run dev:all",
+    "dev": "npm run build:shared && npm run dev:all",
     "dev:all": "concurrently -n server,web -c green,cyan \"npm run dev -w @pby/server\" \"npm run dev -w @pby/web\"",
     "start": "node server/dist/index.js",
     "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present && tsc -p e2e/tsconfig.json",

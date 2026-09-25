@@ -1258,10 +1258,10 @@ textarea.input {
 .hero .pos {
   font-family: var(--font-display);
   font-size: var(--fs-mega);
-  line-height: 1.15;
+  line-height: 1;
   font-weight: 600;
   letter-spacing: -0.02em;
-  margin: 4px 0;
+  margin: 8px 0 14px;
 }
 .hero .pos.word {
   font-size: 4.2rem;
