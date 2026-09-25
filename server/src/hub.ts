@@ -9,7 +9,8 @@ import type { QueueService } from './service.js';
 const PING_MS = 25_000;
 
 export class Hub {
-  private hosts = new Map<string, Set<WebSocket>>();
+  /** Host sockets per event, with the session token each one was opened with. */
+  private hosts = new Map<string, Map<WebSocket, string>>();
   private guests = new Map<string, Map<WebSocket, string>>();
   private scheduled = new Set<string>();
   private timer: NodeJS.Timeout;
@@ -25,13 +26,13 @@ export class Hub {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
   }
 
-  addHost(eventId: string, ws: WebSocket): void {
-    const set = this.hosts.get(eventId) ?? new Set();
-    set.add(ws);
-    this.hosts.set(eventId, set);
+  addHost(eventId: string, ws: WebSocket, sessionToken: string): void {
+    const map = this.hosts.get(eventId) ?? new Map<WebSocket, string>();
+    map.set(ws, sessionToken);
+    this.hosts.set(eventId, map);
     ws.on('close', () => {
-      set.delete(ws);
-      if (!set.size) this.hosts.delete(eventId);
+      map.delete(ws);
+      if (!map.size) this.hosts.delete(eventId);
     });
     try {
       Hub.send(ws, { type: 'host', data: this.service.hostSnapshot(eventId) });
@@ -71,10 +72,12 @@ export class Hub {
       } catch {
         msg = null;
       }
-      for (const ws of hosts) {
-        if (msg) Hub.send(ws, msg);
-        // Closing an event clears host sessions, so the sockets go too.
-        if (!msg || msg.data.event.status === 'closed') ws.close(4401, 'signed_out');
+      for (const [ws, token] of hosts) {
+        // A device that was signed out (Sign out other devices, Sign out, expiry, or closing
+        // the event) must stop receiving guest names and phone numbers right away.
+        const signedIn = this.service.sessions.valid(eventId, token);
+        if (msg && signedIn) Hub.send(ws, msg);
+        if (!msg || !signedIn || msg.data.event.status === 'closed') ws.close(4401, 'signed_out');
       }
     }
     const guests = this.guests.get(eventId);
@@ -89,7 +92,12 @@ export class Hub {
   }
 
   private pingAll(): void {
-    for (const set of this.hosts.values()) for (const ws of set) Hub.send(ws, { type: 'ping' });
+    for (const [eventId, map] of this.hosts) {
+      for (const [ws, token] of map) {
+        if (this.service.sessions.valid(eventId, token)) Hub.send(ws, { type: 'ping' });
+        else ws.close(4401, 'signed_out'); // the 12 h session expired
+      }
+    }
     for (const map of this.guests.values())
       for (const ws of map.keys()) Hub.send(ws, { type: 'ping' });
   }

@@ -135,16 +135,18 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
     host.post<EventParams>('/api/host/events/:id/logout', async (req, reply) => {
       service.sessions.delete(token(req, req.params.id)!);
       ctx.clearHostCookie(reply, req.params.id);
+      ctx.hub.schedule(req.params.id); // closes this device's live socket
       return { ok: true };
     });
 
     host.post<EventParams>('/api/host/events/:id/signout-others', async (req) => {
       const removed = service.sessions.deleteOthers(req.params.id, token(req, req.params.id)!);
+      ctx.hub.schedule(req.params.id); // closes the other devices' live sockets
       return { removed };
     });
 
     host.get<EventParams>('/ws/host/:id', { websocket: true }, (socket, req) => {
-      ctx.hub.addHost(req.params.id, socket);
+      ctx.hub.addHost(req.params.id, socket, token(req, req.params.id)!);
     });
   });
 }

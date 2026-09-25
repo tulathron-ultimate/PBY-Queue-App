@@ -505,4 +505,34 @@ describe('QA regressions', () => {
     expect(loadConfig({ TRUST_PROXY: 'false' }).trustProxy).toBe(false);
     expect(loadConfig({ TRUST_PROXY: '172.16.0.0/12' }).trustProxy).toBe('172.16.0.0/12');
   });
+
+  it('drops a host WebSocket as soon as its device is signed out', async () => {
+    const h = await setup();
+    const login = await h.app.inject({
+      method: 'POST',
+      url: '/api/host/login',
+      payload: { eventId: h.eventId, pin: PIN },
+    });
+    const helperCookie = login.cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+    await h.app.listen({ port: 0, host: '127.0.0.1' });
+    const { port } = h.app.server.address() as { port: number };
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/host/${h.eventId}`, {
+      headers: { cookie: helperCookie },
+    });
+    const phones: (string | null)[] = [];
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(String(raw));
+      if (msg.type === 'host')
+        phones.push(...(msg.data as HostSnapshot).parties.map((p) => p.phone));
+    });
+    const closed = new Promise<number>((resolve) => ws.on('close', (code) => resolve(code)));
+    await new Promise((resolve) => ws.on('open', resolve));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // The main host signs the helper out, then adds a party with a phone number.
+    expect((await host(h, 'POST', '/signout-others')).json()).toEqual({ removed: 1 });
+    await addManual(h, 'Secret Family', '555-201-8830');
+    expect(await closed).toBe(4401);
+    expect(phones).not.toContain('+15552018830');
+  });
 });
