@@ -195,6 +195,10 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 | Status endpoint | 60 req/min per IP. An unknown token returns a generic 404. |
 | Self-join | **60 joins per (IP, event) per 10 min**, configurable with the `SELF_JOIN_PER_IP` env var. Keyed per event because families at one venue share a Wi-Fi or carrier NAT address (was 10 per IP; changed by owner decision after QA #13). One active party per phone per event (a duplicate returns the existing status link). Honeypot field; no CAPTCHA in MVP. The 500 active-party cap (§2.7) still applies. |
 | Twilio join texts from self-join | **60 per event per hour** (env `SELF_JOIN_TEXTS_PER_HOUR`), so strangers with the QR code can't run up the Twilio bill by joining with numbers they know. Parties over the cap still join; their join text is not sent automatically and instead waits in the host's "Texts to send" tray, with a banner on the dashboard (QA #15). Host-added parties and Up next / Your turn texts are not capped. |
+| Admin password | 5 failures per client per minute block it for 60 s. **30 failures per hour from all addresses together lock event creation for 15 min** (SECURITY_REVIEW SEC-5). |
+| Rate-limit keys | A client is its IPv4 address or its **IPv6 /64** (SEC-5). Limiter maps hold at most 50,000 keys (SEC-6). |
+| WebSockets | At most 10 per status link and 5 per host session (the oldest is closed), and 1,000 per client (SEC-7). |
+| Request bodies | 64 KB, except the host import at 2 MB (SEC-9). |
 
 ### 2.11 SMS opt-out & Twilio compliance
 
