@@ -117,7 +117,10 @@ export interface GuestSnapshot {
   eventEnded: boolean;
   me: {
     ticket: number;
-    /** The guest's own party name (they typed or were given it). */
+    /**
+     * The guest's own party name, privacy-filtered like everyone else's ("Emma R."): a status
+     * link can be forwarded, and a self-join with a known phone returns that party's link.
+     */
     name: string;
     size: number;
     state: PartyState;

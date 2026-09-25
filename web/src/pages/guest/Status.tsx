@@ -137,7 +137,7 @@ export function Status({ token }: { token: string }) {
     hero = (
       <div className="hero done">
         <StatusBadge state="done" big />
-        <p className="headline">Thanks, {me.name}! Your photos are done.</p>
+        <p className="headline">Thanks, {me.name.split(' ')[0]}! Your photos are done.</p>
       </div>
     );
   } else if (me.state === 'skipped' || me.state === 'no_show') {

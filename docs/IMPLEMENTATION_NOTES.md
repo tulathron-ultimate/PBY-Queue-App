@@ -81,7 +81,9 @@ templates and rules), then `DESIGN.md`, and otherwise the simplest reasonable op
 - **Closing** an event clears every session (§2.10). The host can sign back in with the PIN to see
   the read-only event and use **Delete guest data now**.
 - **Public names (G2):** first word plus the initial of the last word, so "Emma Rivera" → "Emma R."
-  and "Priya & Dev" → "Priya D.". A guest sees their own party name in full on their own page.
+  and "Priya & Dev" → "Priya D.". A guest's own name is filtered the same way on their status page: status links get
+  forwarded, and a self-join with a phone already in line returns that party's link, so the
+  page must not reveal a full name to whoever holds it.
 - **CSRF:** host routes use a SameSite=Lax cookie and require `application/json` bodies, which
   cross-site forms cannot send.
 - **Logs:** request URLs have status tokens replaced with `***` and phone-like numbers masked

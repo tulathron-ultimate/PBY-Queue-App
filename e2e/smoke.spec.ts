@@ -60,7 +60,9 @@ test('create event → add parties → check in → call next → guest sees it 
   await guest.goto(statusHref!);
   await expect(guest.getByTestId('position')).toHaveText('2');
   await expect(guest.getByTestId('now-serving')).toContainText('Starting soon');
-  await expect(guest.getByText('Nguyen Family')).toBeVisible();
+  await expect(guest.getByTestId('my-card')).toContainText('Nguyen F.');
+  // No full last names either (G2), not even the guest's own
+  await expect(guest.locator('body')).not.toContainText('Nguyen Family');
   // No phone numbers on the guest page
   await expect(guest.locator('body')).not.toContainText('555');
 

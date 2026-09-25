@@ -182,7 +182,7 @@ export function buildGuestSnapshot(
     ...base,
     me: {
       ticket: party.ticket,
-      name: party.name,
+      name: publicName(party.name, true) ?? '',
       size: party.size,
       state: party.state,
       arrived: party.arrived,

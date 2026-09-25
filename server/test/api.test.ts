@@ -557,4 +557,23 @@ describe('QA regressions', () => {
     expect(await open('https://evil.example')).toBe(403);
     expect(await open(`http://127.0.0.1:${port}`)).toBe('open');
   });
+
+  it("never puts a full last name or phone in a guest payload, even the guest's own", async () => {
+    const h = await setup();
+    await addManual(h, 'Emma Rivera-Castillo', '555-201-8830');
+    // Anyone with the public QR code can self-join with a phone number they know; the
+    // duplicate rule hands back that party's status link, so it must not reveal the full name.
+    const dup = await h.app.inject({
+      method: 'POST',
+      url: `/api/join/${h.code}`,
+      payload: { name: 'Nosy', phone: '(555) 201-8830', consent: true },
+    });
+    expect(dup.json().existing).toBe(true);
+    const status = await h.app.inject({ method: 'GET', url: `/api/status/${dup.json().token}` });
+    const body = status.body;
+    expect(status.json().me.name).toBe('Emma R.');
+    expect(body).not.toContain('Castillo');
+    expect(body).not.toContain('Rivera');
+    expect(body).not.toMatch(/201.?8830/);
+  });
 });
