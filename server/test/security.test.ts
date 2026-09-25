@@ -123,3 +123,37 @@ describe('SEC-1 CSRF: JSON-only rule and Origin check', () => {
     expect(same.statusCode).toBe(200);
   });
 });
+
+describe('SEC-2 security headers', () => {
+  it('sends a strict CSP, anti-framing, HSTS on HTTPS and no-store on API responses', async () => {
+    const h = await setup();
+    await addManual(h, 'Emma Rivera', '555-201-8830');
+    const token = (await snap(h)).parties[0].token;
+    const res = await h.app.inject({
+      method: 'GET',
+      url: `/api/status/${token}`,
+      headers: { 'x-forwarded-proto': 'https' },
+    });
+    expect(res.statusCode).toBe(200);
+    const csp = String(res.headers['content-security-policy']);
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("base-uri 'none'");
+    expect(csp).not.toContain('unsafe-inline');
+    expect(csp).not.toContain('unsafe-eval');
+    expect(res.headers['x-frame-options']).toBe('DENY');
+    expect(res.headers['referrer-policy']).toBe('no-referrer');
+    expect(String(res.headers['permissions-policy'])).toContain('camera=()');
+    expect(String(res.headers['strict-transport-security'])).toMatch(/max-age=\d{7,}/);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['cross-origin-opener-policy']).toBe('same-origin');
+
+    const hostRes = await host(h, 'GET', '');
+    expect(hostRes.headers['cache-control']).toBe('no-store');
+    // No HSTS over plain HTTP (LAN testing): browsers ignore it there anyway.
+    expect(hostRes.headers['strict-transport-security']).toBeUndefined();
+    expect(hostRes.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});

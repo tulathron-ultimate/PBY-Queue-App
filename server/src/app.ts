@@ -54,6 +54,39 @@ function redactUrl(url: string): string {
 }
 
 /**
+ * SEC-2. No 'unsafe-inline': the built index.html has no inline script or style, and React's
+ * `style` props go through the CSSOM, which CSP allows. `connect-src 'self'` covers ws/wss to
+ * the same host (CSP Level 3). `frame-ancestors 'none'` stops clickjacking of Call next and
+ * "Delete guest data now".
+ */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "manifest-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+/** Wake lock is the only powerful feature the app uses (H1 keeps the screen on). */
+const PERMISSIONS_POLICY = [
+  'camera=()',
+  'microphone=()',
+  'geolocation=()',
+  'payment=()',
+  'usb=()',
+  'serial=()',
+  'bluetooth=()',
+  'screen-wake-lock=(self)',
+].join(', ');
+
+/**
  * True when a browser says the request came from another origin (SEC-1). Requests without
  * `Origin` or `Sec-Fetch-Site` are not from a browser page, so there is no ambient cookie to
  * abuse. `PUBLIC_URL`'s host is accepted too, in case a proxy rewrites Host.
@@ -136,9 +169,24 @@ export async function buildApp(
   await app.register(formbody);
   await app.register(websocket, { options: { maxPayload: 16 * 1024 } });
 
-  app.addHook('onSend', async (_req, reply, payload) => {
+  app.addHook('onSend', async (req, reply, payload) => {
+    // Status tokens are in page URLs: never send them to another site in Referer.
     reply.header('Referrer-Policy', 'no-referrer');
     reply.header('X-Content-Type-Options', 'nosniff');
+    // SEC-2: the built PWA loads only same-origin scripts, styles, fonts, images, the manifest
+    // and its service worker, and talks to its own API and WebSocket.
+    reply.header('Content-Security-Policy', CSP);
+    reply.header('X-Frame-Options', 'DENY'); // older browsers without frame-ancestors
+    reply.header('Permissions-Policy', PERMISSIONS_POLICY);
+    reply.header('Cross-Origin-Opener-Policy', 'same-origin');
+    reply.header('Cross-Origin-Resource-Policy', 'same-origin');
+    if (req.protocol === 'https') {
+      reply.header('Strict-Transport-Security', 'max-age=31536000');
+    }
+    // Snapshots carry names, phone numbers and status tokens: keep them out of every cache.
+    if (/^\/(api|ws)\//.test(req.url) && !reply.hasHeader('cache-control')) {
+      reply.header('Cache-Control', 'no-store');
+    }
     return payload;
   });
 
