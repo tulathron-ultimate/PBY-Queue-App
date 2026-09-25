@@ -53,6 +53,30 @@ function redactUrl(url: string): string {
   return maskPhonesInText(url.replace(/\/(s|status)\/[A-Za-z0-9]+/g, '/$1/***'));
 }
 
+/**
+ * True when a browser says the request came from another origin (SEC-1). Requests without
+ * `Origin` or `Sec-Fetch-Site` are not from a browser page, so there is no ambient cookie to
+ * abuse. `PUBLIC_URL`'s host is accepted too, in case a proxy rewrites Host.
+ */
+export function crossOrigin(req: FastifyRequest, publicUrl: string | null): boolean {
+  const site = req.headers['sec-fetch-site'];
+  if (typeof site === 'string' && site !== 'same-origin' && site !== 'none') return true;
+  const origin = req.headers.origin;
+  if (origin === undefined) return false;
+  let host: string;
+  try {
+    host = new URL(origin).host;
+  } catch {
+    return true; // `Origin: null` (sandboxed frames, data: URLs) or garbage
+  }
+  if (host === req.host) return false;
+  try {
+    return !publicUrl || new URL(publicUrl).host !== host;
+  } catch {
+    return true;
+  }
+}
+
 export async function buildApp(
   cfg: Config,
   opts: BuildOptions = {},
@@ -118,11 +142,22 @@ export async function buildApp(
     return payload;
   });
 
-  // Cross-site forms cannot send JSON, so requiring it blocks CSRF on cookie-authenticated routes.
-  app.addHook('preHandler', async (req, reply) => {
-    if (!['POST', 'PATCH', 'DELETE'].includes(req.method) || !req.url.startsWith('/api/')) return;
-    if (!String(req.headers['content-type'] ?? '').includes('application/json')) {
+  // CSRF (SEC-1): cross-site forms and no-preflight fetches cannot send a body whose media type
+  // is exactly application/json, so requiring it blocks CSRF on cookie-authenticated routes.
+  // `text/plain; application/json` is CORS-safelisted, so only the type essence counts.
+  // Browsers also say where a request came from: refuse other origins, including sibling
+  // subdomains, which SameSite=Lax treats as same-site.
+  app.addHook('onRequest', async (req, reply) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || !req.url.startsWith('/api/')) return;
+    const essence = String(req.headers['content-type'] ?? '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+    if (essence !== 'application/json') {
       return reply.code(415).send({ error: 'json_required', message: 'Send JSON.' });
+    }
+    if (crossOrigin(req, cfg.publicUrl)) {
+      return reply.code(403).send({ error: 'forbidden', message: 'Cross-site request.' });
     }
   });
 
