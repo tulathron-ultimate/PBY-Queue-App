@@ -26,6 +26,8 @@ export default defineConfig({
           { src: '/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
+      // Only the app shell is precached. There is deliberately no runtime caching, so API
+      // responses (host snapshots, the results CSV export) never land in a cache.
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/index.html',

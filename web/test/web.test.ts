@@ -5,6 +5,7 @@ import {
   type HostSnapshot,
   type PendingText,
 } from '@pby/shared';
+import { readFileSync } from 'node:fs';
 import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
 import {
@@ -171,5 +172,13 @@ describe('QA nits', () => {
     expect(callNextEmptyLabel(0, false)).toBe('Line is empty');
     expect(callNextEmptyLabel(3, false)).toBe('Nobody checked in');
     expect(callNextEmptyLabel(3, true)).toBeNull();
+  });
+});
+
+describe('service worker (E8)', () => {
+  it('never caches API responses such as the results CSV', () => {
+    const config = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
+    expect(config).not.toMatch(/runtimeCaching\s*:/);
+    expect(config).toContain('navigateFallbackDenylist: [/^\\/api\\//');
   });
 });
