@@ -5,7 +5,6 @@
  */
 import {
   addParties as addToQueue,
-  addSample,
   callNext as queueCallNext,
   clampInt,
   completeCurrent,
@@ -62,7 +61,6 @@ export interface CreateEventInput {
   date?: string;
   pin: string;
   upNextN?: number;
-  minutesPerParty?: number;
   smsMode?: SmsMode;
   selfJoin?: boolean;
   showNames?: boolean;
@@ -79,7 +77,10 @@ export interface AddOptions {
   consent?: boolean;
 }
 
-type MutationResult = QueueResult<PartyRecord> & { samples?: number[]; extraEffects?: SmsEffect[] };
+/** A text to create. `tray` puts it in the host's tap-to-send tray even in Twilio mode. */
+type TextEffect = SmsEffect & { tray?: boolean };
+
+type MutationResult = QueueResult<PartyRecord> & { extraEffects?: TextEffect[] };
 
 const UNDO_KEEP = 20;
 
@@ -173,12 +174,6 @@ export class QueueService {
         : new Date(now).toISOString().slice(0, 10),
       pinHash: await hashPin(String(input.pin)),
       upNextN: clampInt(input.upNextN, LIMITS.upNextMin, LIMITS.upNextMax, DEFAULTS.upNextN),
-      minutesPerParty: clampInt(
-        input.minutesPerParty,
-        LIMITS.minutesPerPartyMin,
-        LIMITS.minutesPerPartyMax,
-        DEFAULTS.minutesPerParty,
-      ),
       smsMode,
       selfJoin: input.selfJoin ?? true,
       showNames: input.showNames ?? true,
@@ -186,9 +181,9 @@ export class QueueService {
       status: 'open',
       publicUrl: this.cfg.publicUrl ?? origin.replace(/\/+$/, ''),
       nextTicket: 1,
-      samples: [],
       createdAt: now,
       lastActionAt: now,
+      lastHostActionAt: now,
       lastCallAt: null,
       closedAt: null,
       purgedAt: null,
@@ -210,6 +205,11 @@ export class QueueService {
       throw new ServiceError(409, 'event_closed', 'This event has ended.');
     }
     return event;
+  }
+
+  /** Records a host action for auto-close (§2.12). Called only by authenticated host routes. */
+  touchHost(eventId: string): void {
+    this.store.updateEvent(eventId, { lastHostActionAt: this.now() });
   }
 
   /* ------------------------------------------------------------- snapshots */
@@ -306,15 +306,16 @@ export class QueueService {
   private createTexts(
     event: EventRecord,
     parties: readonly PartyRecord[],
-    effects: readonly SmsEffect[],
+    effects: readonly TextEffect[],
     now: number,
   ): { ids: number[]; twilioIds: number[] } {
     const ids: number[] = [];
     const twilioIds: number[] = [];
     const footerGiven = new Set<string>();
     // Tap-to-send never sends from the server: its texts wait in the host's tray as `pending`.
-    const provider = this.usesTwilio(event) ? 'twilio' : tapToSend.name;
+    const eventProvider = this.usesTwilio(event) ? 'twilio' : tapToSend.name;
     for (const effect of effects) {
+      const provider = effect.tray ? tapToSend.name : eventProvider;
       const party = parties.find((p) => p.id === effect.partyId);
       if (!party || !this.canText(event, party)) continue;
       const footer =
@@ -384,8 +385,8 @@ export class QueueService {
   /* --------------------------------------------------------------- mutations */
 
   /**
-   * Runs `fn` against the current parties in a transaction, persists changes, records the
-   * service-time sample, creates texts, and pushes an Undo entry when `undoLabel` is given.
+   * Runs `fn` against the current parties in a transaction, persists changes, creates texts,
+   * and pushes an Undo entry when `undoLabel` is given.
    */
   private mutate(
     eventId: string,
@@ -413,8 +414,6 @@ export class QueueService {
         else if (queueChanged(prev, p)) this.store.updatePartyQueue(p);
       }
       this.cancelStaleTexts(eventId, r.parties);
-      const samples =
-        r.samples ?? (r.sampleMs !== null ? addSample(event.samples, r.sampleMs) : event.samples);
       const texts = this.createTexts(
         event,
         r.parties,
@@ -422,18 +421,18 @@ export class QueueService {
         now,
       );
       twilioIds = texts.twilioIds;
-      this.store.updateEvent(eventId, { samples, lastActionAt: now });
+      this.store.updateEvent(eventId, { lastActionAt: now });
       if (undoLabel) {
         this.db
           .prepare(
+            // `samples` (the old wait-estimate data) is unused; the column is NOT NULL.
             `INSERT INTO undo_stack (event_id, label, snapshot, samples, sms_ids, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, '[]', ?, ?)`,
           )
           .run(
             eventId,
             undoLabel,
             JSON.stringify(takeSnapshot(before)),
-            JSON.stringify(event.samples),
             JSON.stringify(texts.ids),
             now,
           );
@@ -543,8 +542,7 @@ export class QueueService {
       const row = this.db
         .prepare('SELECT * FROM undo_stack WHERE event_id = ? ORDER BY id DESC LIMIT 1')
         .get(eventId) as
-        | { id: number; label: string; snapshot: string; samples: string; sms_ids: string }
-        | undefined;
+        { id: number; label: string; snapshot: string; sms_ids: string } | undefined;
       if (!row) throw new ServiceError(409, 'nothing_to_undo', 'Nothing to undo.');
       label = row.label;
       const alreadyTexted = new Set<string>();
@@ -556,8 +554,7 @@ export class QueueService {
       }
       this.db.prepare('DELETE FROM undo_stack WHERE id = ?').run(row.id);
       const snapshot = JSON.parse(row.snapshot) as QueueSnapshot;
-      const r = restoreSnapshot(parties, snapshot, event.upNextN, alreadyTexted);
-      return { ...r, samples: JSON.parse(row.samples) as number[] };
+      return restoreSnapshot(parties, snapshot, event.upNextN, alreadyTexted);
     });
     return { label };
   }
@@ -644,15 +641,34 @@ export class QueueService {
       this.store.updateEvent(eventId, { nextTicket: ticket });
       const r = addToQueue(parties, added, event.upNextN, opts.position);
       const upNextTexted = new Set(r.effects.map((e) => e.partyId));
-      const joinTexts: SmsEffect[] = opts.sendJoinText
+      // QA #15: anyone with the QR code can self-join with any US number, and each join text
+      // costs the owner money in Twilio mode. Past the hourly cap the party still joins, and its
+      // join text waits in the host's tray instead of going out automatically.
+      const tray =
+        opts.source === 'self' && this.usesTwilio(event) && this.selfJoinTextCapReached(event, now);
+      const joinTexts: TextEffect[] = opts.sendJoinText
         ? added
             .filter((p) => !upNextTexted.has(p.id))
-            .map((p) => ({ partyId: p.id, template: 'join' as const }))
+            .map((p) => ({ partyId: p.id, template: 'join' as const, tray }))
         : [];
       added = added.map((a) => r.parties.find((p) => p.id === a.id)!);
       return { ...r, extraEffects: joinTexts };
     });
     return added;
+  }
+
+  /** Twilio join texts for self-joins in the last hour have reached the cap (QA #15). */
+  private selfJoinTextCapReached(event: EventRecord, now: number): boolean {
+    const { n } = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM sms_log s JOIN parties p ON p.id = s.party_id
+         WHERE s.event_id = ? AND s.template = 'join' AND s.provider = 'twilio'
+           AND p.source = 'self' AND s.created_at > ?`,
+      )
+      .get(event.id, now - 3_600_000) as { n: number };
+    const reached = n >= this.cfg.selfJoinTextsPerHour;
+    if (reached) this.log.warn({ event: event.id }, 'self-join text cap reached; using the tray');
+    return reached;
   }
 
   /** A5 self-join. One active party per phone: a duplicate returns the existing link. */
@@ -740,7 +756,7 @@ export class QueueService {
             : party.state === 'skipped' || party.state === 'no_show'
               ? 'skipped'
               : 'join';
-      return { parties, effects: [{ partyId, template }], sampleMs: null };
+      return { parties, effects: [{ partyId, template }] };
     });
   }
 
@@ -775,14 +791,6 @@ export class QueueService {
       update.smsName = text(patch.smsName, LIMITS.smsEventNameMax) || null;
     if (patch.date !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(patch.date))
       update.date = patch.date;
-    if (patch.minutesPerParty !== undefined) {
-      update.minutesPerParty = clampInt(
-        patch.minutesPerParty,
-        LIMITS.minutesPerPartyMin,
-        LIMITS.minutesPerPartyMax,
-        event.minutesPerParty,
-      );
-    }
     if (patch.smsMode !== undefined) {
       if (patch.smsMode === 'twilio' && !this.twilio) {
         throw new ServiceError(
@@ -803,10 +811,7 @@ export class QueueService {
     this.store.updateEvent(eventId, update);
     if (newN !== event.upNextN) {
       this.store.updateEvent(eventId, { upNextN: newN });
-      this.mutate(eventId, null, (parties) => ({
-        ...recomputeUpNext(parties, newN),
-        sampleMs: null,
-      }));
+      this.mutate(eventId, null, (parties) => recomputeUpNext(parties, newN));
     } else {
       this.onChange(eventId);
     }

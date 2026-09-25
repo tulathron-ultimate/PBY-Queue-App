@@ -51,6 +51,12 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
 
   app.register(async (host) => {
     host.addHook('preHandler', requireHost as never);
+    // §2.12 auto-close counts host actions only. This hook runs after requireHost, so only
+    // authenticated host requests get here; reads and the live feed don't count as actions.
+    host.addHook('preHandler', async (req: FastifyRequest<EventParams>, reply) => {
+      if (reply.sent || req.method === 'GET') return;
+      if (service.getEvent(req.params.id)) service.touchHost(req.params.id);
+    });
 
     host.get<EventParams>('/api/host/events/:id', async (req) => snapshot(req.params.id));
 

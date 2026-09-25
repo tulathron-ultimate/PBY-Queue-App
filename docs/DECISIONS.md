@@ -13,7 +13,7 @@ and when it is their turn, and can view a live page showing their position and w
 | SMS | Pluggable `SmsProvider` interface. **Tap-to-send** (opens device Messages app via `sms:` link with prefilled body; host taps Send) is the default and needs no setup. **Twilio** provider can be enabled per event when credentials are configured. Switchable in event settings. |
 | Hosting | Single Docker container: Node.js (TypeScript) server + SQLite + WebSocket live updates, serving the built PWA. Same image runs on **Unraid** (exposed via Cloudflare Tunnel) or a **cloud host** (Fly.io / Render). Config via env vars. |
 | Queue entries | A **party**: display name, size (1+ people, optional member names), one contact phone number that receives texts. Individuals are parties of size 1. |
-| Guests | No accounts. Each party gets a unique unguessable status link (texted to them) showing their position, who is currently up, and estimated wait. |
+| Guests | No accounts. Each party gets a unique unguessable status link (texted to them) showing their position and who is currently up. (No estimated wait: removed by the owner on 2026-09-25 because the pace varies.) |
 | Host | Protected by a per-event host PIN/password. One host device primary; additional helper devices can join with the PIN. |
 
 ## Core queue flow

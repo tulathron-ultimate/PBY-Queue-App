@@ -68,9 +68,8 @@ export interface PendingText {
   id: number;
   partyId: string;
   template: TemplateKey;
-  /** E.164 recipient. */
+  /** E.164 recipient. The body is rendered on the device with `renderPartyText`. */
   to: string;
-  body: string;
   createdAt: number;
 }
 
@@ -79,7 +78,6 @@ export interface EventSettings {
   smsName: string | null;
   date: string;
   upNextN: number;
-  minutesPerParty: number;
   smsMode: SmsMode;
   selfJoin: boolean;
   showNames: boolean;
@@ -90,6 +88,8 @@ export interface HostEventInfo extends EventSettings {
   code: string;
   status: EventStatus;
   joinUrl: string;
+  /** Base of texted status links, so host devices can render tray texts themselves. */
+  publicUrl: string;
   hostConsent: boolean;
   createdAt: number;
   closedAt: number | null;
@@ -100,7 +100,6 @@ export interface HostSnapshot {
   parties: HostParty[];
   pendingTexts: PendingText[];
   undo: { label: string; at: number } | null;
-  avgMinutes: number;
   twilioAvailable: boolean;
   serverTime: number;
 }
@@ -126,8 +125,6 @@ export interface GuestSnapshot {
     state: PartyState;
     arrived: boolean;
     position: number | null;
-    waitMinutes: number | null;
-    waitText: string | null;
     hasPhone: boolean;
   } | null;
   nowServing: GuestPartyRef | null;
@@ -143,7 +140,6 @@ export interface JoinInfo {
   open: boolean;
   selfJoin: boolean;
   lineLength: number;
-  waitText: string;
   smsMode: SmsMode;
   full: boolean;
 }

@@ -11,7 +11,7 @@ Visual reference: [`mockups.html`](./mockups.html). Open it in any browser; it h
 2. **Sunlight first.** The default theme is light: near-black text on the brand cream, solid saturated status fills, no light-gray text, no thin fonts, no meaning carried by subtle tints alone. Dark mode is for evening and indoor use.
 3. **Never color alone.** Every status is shown as color **plus** a text label **plus** an icon/shape, so it survives glare, color blindness and grayscale.
 4. **Forgiving over confirming.** Frequent actions (Call next, Skip, No-show, Done) run immediately and show a 6-second **Undo** toast. Confirmation dialogs are used only for destructive, rare actions (Remove party, End event, Clear queue).
-5. **Guests need three facts.** Where am I, who is up now, roughly how long. Everything else on the guest page is secondary and small.
+5. **Guests need two facts.** Where am I, and who is up now. Everything else on the guest page is secondary and small. There is no wait-time estimate: the owner removed it because the pace of a photo line varies too much to predict.
 6. **Adapters, not assumptions.** SMS, contacts and notifications appear in the UI as capabilities. If a capability is missing (e.g., Contact Picker on iPhone), its button is hidden, never shown disabled with no explanation.
 
 ---
@@ -119,7 +119,7 @@ Simple 2px-stroke line icons, 24px (inline SVG in the app). Required set: camera
 
 ### 1.7 Copy tone
 
-Short, warm, literal. Use the party name the guest typed ("Smith Family"), ticket numbers with `#` ("#14"), and times as ranges ("about 10–15 min"). Never show "ETA 0 min"; say "Any minute now".
+Short, warm, literal. Use the party name the guest typed ("Smith Family") and ticket numbers with `#` ("#14"). Talk about places in line ("3 ahead of you"), never about how long something will take.
 
 ---
 
@@ -127,9 +127,9 @@ Short, warm, literal. Use the party name the guest typed ("Smith Family"), ticke
 
 - **Ticket number**: each party gets a sequential number at creation (`#1`, `#2`…). It never changes, even when reordered. Used on the lobby display, in texts and on the guest page. It lets guests find themselves without reading names, and gives a privacy option.
 - **Position**: live count of parties ahead of you + 1 among active (`waiting`, `up_next`) parties. "You're #3 in line" uses position, not ticket number. To avoid confusion, the UI always writes ticket numbers as "Ticket #14" or "#14" in a badge, and position as a big plain number with "in line" beneath.
-- **Estimated wait**: `(position − 1 + 1 if someone is being served) × avg session length`. Average = rolling median of the last 5 completed sessions; before 3 sessions complete, use the event's "Minutes per party" setting (default 3). Always shown as a range rounded to 5 min (e.g., "about 10–15 min"). Hidden while the queue is paused.
+- **Ahead of you**: the number of checked-in parties ahead in line (`position − 1`), e.g. "3 ahead of you". (A wait-time estimate was designed here originally; the owner removed it, so no screen predicts a time.)
 - **Up-next threshold N** (default 2): the first N active parties are `up_next` and get the Up-next text.
-- **Pause**: host can pause the line ("Back in 10 min"). Guests see a paused banner; estimates are hidden.
+- **Pause**: host can pause the line. Guests see a paused banner.
 - **Privacy setting**: "Show names to guests" (default on). When off, guest page and lobby show ticket numbers only.
 
 ---
@@ -214,7 +214,6 @@ Single scrolling form, one column, big inputs (56px). Sticky **Create event** bu
 | Host PIN | 4–6 digit numeric input (`inputmode="numeric"`), show/hide eye | Required. Helper: "Helpers enter this to run the line from another phone." |
 | Texting | Segmented control, 2 big options with one-line explanations | **Tap to send** (default): "Your phone opens Messages with the text ready. You tap Send. No setup." / **Automatic (Twilio)**: "Texts send by themselves. Needs a Twilio account." Selecting Twilio reveals Account SID, Auth Token, From number + **Send test text** button. If server has Twilio env vars, show "Configured on server ✓" and hide fields. |
 | Text people when they're within | Stepper (− 2 +), 48px buttons | 2 spots, range 1–10. Helper: "They get an 'Up next' text at this point." |
-| Minutes per party (estimate) | Stepper | 3 min. Helper: "Used until we learn your real pace." |
 | Guests can join by QR | Toggle | On |
 | Show names to guests | Toggle | On |
 | Message templates | Collapsed "Customize texts" | See §7 defaults |
@@ -232,7 +231,7 @@ Single scrolling form, one column, big inputs (56px). Sticky **Create event** bu
 Layout, top to bottom (390px wide phone):
 
 1. **Top bar** (56px): event name (truncated), Live pill, **Share** icon button (QR), **⋯** menu. Paused state replaces Live pill with an amber "Paused" pill.
-2. **Counts strip** (40px): "38 waiting · 12 done · ~3 min each". Tapping "done" toggles the done filter.
+2. **Counts strip** (40px): "38 waiting · 12 done". Tapping "done" toggles the done filter.
 3. **Now serving card** (`now_serving` solid fill, white text, ~150px):
    - Label "NOW SERVING" (fs-sm, caps, letter-spaced), ticket badge `#14`, party name (fs-xl), "4 people · Maria, Leo, Ana, Sam" (one line, truncated), timer "2:41" since called.
    - Row of 3 buttons on the card (56px, white outline style): **Done ✓**, **No-show**, **Text** (message icon; shows "Texted ✓" after sending).
@@ -243,7 +242,7 @@ Layout, top to bottom (390px wide phone):
 7. **Bottom action bar** (sticky, elevated, safe-area aware):
    - Left: **+ Add** square button (80×80, surface-2, icon + "Add").
    - Right: **Call next** (80px tall, flexible width, `--primary`, fs-2xl weight 800, "Call next ▸"). Sub-label inside the button: "Garcia Family · #15" so she knows who is coming without reading the list.
-   - When the queue is empty: button disabled with label "Line is empty".
+   - When nobody can be called: button disabled with label "Line is empty" (no one waiting) or "Nobody checked in" (everyone waiting is not here yet). Same wording as FEATURES §2.5.
    - When paused: button reads "Resume line".
 
 **Queue row (64px)**: left 6px status bar · ticket badge (`#15`, 44px wide, tabular) · name (fs-base 700) with size chip "👥 4" rendered as a users icon + number · second line: status label + "texted 2m ago" or phone last-4 · right: **message icon button** (48×48; filled dot when not yet texted for current status) · whole row tappable → H4.
@@ -329,7 +328,7 @@ Full-screen sheet with Cancel / **Save** (top) and sticky bottom **Save** (56px)
 ### H9 Settings
 Grouped list, each row 56px:
 - **Event**: name, date, PIN (change), End event (danger, confirm).
-- **Queue**: Up-next threshold stepper, minutes per party, accept self-join toggle, show names to guests toggle, pause line.
+- **Queue**: Up-next threshold stepper, accept self-join toggle, show names to guests toggle, pause line.
 - **Texting**: mode (Tap to send / Twilio) with Twilio credentials + Send test text; "Ask to text after Call next" toggle; "Confirm before texting" toggle; message templates.
 - **Display**: Theme (Light / Dark / Auto), Max contrast toggle, Text size (Normal / Large / Extra large, scales all tokens by 1 / 1.15 / 1.3), Keep screen awake toggle.
 - **Helpers**: "Helpers on this event: 1" with device list + Sign out others.
@@ -342,7 +341,7 @@ Grouped list, each row 56px:
 Guest pages carry no host chrome, work without JavaScript frameworks loading slowly (server-rendered shell, then live), and are fully usable at 320px wide. Language: plain, second-person.
 
 ### G1 Join the line
-- Header: event name (fs-xl) + "Join the photo line". Live line length: "18 parties ahead of you · about 45–55 min".
+- Header: event name (fs-xl) + "Join the photo line". Live line length: "18 groups ahead of you" (or "Nobody waiting right now").
 - Fields (56px inputs, fs-base labels above, not placeholders-as-labels):
   - **Your name or family name** (required, autocomplete `name`).
   - **How many people in the photo?** Stepper (− 1 +) with large buttons.
@@ -361,18 +360,18 @@ Top to bottom:
    - Label "Your place in line"
    - Position in `--fs-mega`: **3**
    - "Ticket #17 · Smith Family · 4 people"
-   - Estimated wait: "About **5–10 min**" (fs-lg). Before estimates are reliable: "Estimating…".
+   - Parties ahead: "**3** ahead of you" (fs-lg), or "Nobody ahead of you". Hidden in the Up next state, where the position already reads "Next". No time estimate.
    - Status badge (Waiting / Up next).
 3. **Now serving** card: "Now taking photos of" + ticket badge `#14` in `--fs-display` + name "Garcia Family" (or "#14" only if names are hidden).
 4. **Coming up** mini list: next 3 tickets with names; the guest's own row highlighted with "You" tag.
-5. Help text: "Stay nearby. We'll text you when you're 2 away and when it's your turn." (If no phone: "Keep this page open — it updates by itself.")
+5. Help text: "Stay nearby. We'll text you when you're 2 away and when it's your turn." Once the guest is Up next, only: "Stay nearby. We'll text you when it's your turn." (If no phone: "Keep this page open — it updates by itself.")
 6. Footer actions (secondary, 48px text buttons): **Leave the line** (confirm), **Change party size**.
 
 **Up next state**: hero card switches to amber tint + amber bar, headline "You're up next! Head to the photo area." Position shows "Next" when position = 1 behind now-serving; vibration pulse once (if page visible). Browser tab title becomes "⚡ You're up next — PBY".
 
 **States**:
 - Loading: skeleton hero with pulsing number placeholder.
-- Paused: amber banner "The photographer is taking a short break. Back around 3:15." Estimate hidden, position still shown.
+- Paused: amber banner "The photographer is taking a short break." Position still shown.
 - Reconnecting / offline: top banner "Reconnecting… last updated 1 min ago"; number greyed with that timestamp. Falls back to polling every 20s.
 - Link invalid: "We can't find this spot in line. Check the link in your text, or ask the photographer."
 
@@ -408,7 +407,7 @@ Tap-to-send uses the same templates; the SMS adapter builds `sms:` links (`sms:N
 Landscape, 16:9, dark theme forced (better on TVs), no interaction.
 - Left 60%: "NOW SERVING" + ticket `#14` in 220px type + name.
 - Right 40%: "UP NEXT" list of the next 4–5 tickets with names; the first N in amber.
-- Bottom bar: QR code (160px) "Scan to join the line" + short link + "About 3 min per group".
+- Bottom bar: QR code (160px) "Scan to join the line" + short link.
 - New now-serving triggers a 1s green flash and optional chime. Reconnecting indicator small in corner.
 
 ---

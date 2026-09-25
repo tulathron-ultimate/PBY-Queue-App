@@ -1,4 +1,10 @@
-import { TEMPLATE_EXAMPLE_ROWS, TEMPLATE_HEADERS } from '@pby/shared';
+import {
+  TEMPLATE_EXAMPLE_ROWS,
+  TEMPLATE_HEADERS,
+  type HostParty,
+  type HostSnapshot,
+  type PendingText,
+} from '@pby/shared';
 import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
 import {
@@ -8,6 +14,9 @@ import {
   tableFromWorkbook,
 } from '../src/import/spreadsheet';
 import { parseImportTable } from '@pby/shared';
+import { aheadText, guestNote } from '../src/pages/guest/statusText';
+import { callNextEmptyLabel } from '../src/pages/host/callNextLabel';
+import { trayBody } from '../src/pages/host/trayText';
 import { isIos, smsUri } from '../src/platform/sms';
 
 describe('sms adapter (S2)', () => {
@@ -88,5 +97,73 @@ describe('spreadsheet import (A2)', () => {
     await expect(parseSpreadsheetFile(big)).rejects.toThrow(/too big/);
     const vcf = new File([new Uint8Array(31 * 1024 * 1024)], 'huge.vcf');
     await expect(parseVcfFile(vcf)).rejects.toThrow(/too big/);
+  });
+});
+
+describe('guest status lines (G2)', () => {
+  it('shows how many are ahead, never a wait time', () => {
+    expect(aheadText(4)).toBe('3 ahead of you');
+    expect(aheadText(2)).toBe('1 ahead of you');
+    expect(aheadText(1)).toBe('Nobody ahead of you');
+    expect(aheadText(0)).toBeNull();
+    expect(aheadText(null)).toBeNull();
+    for (const p of [1, 5, 90, 300]) expect(aheadText(p)).not.toMatch(/min|wait|~/i);
+  });
+});
+
+describe('tap-to-send tray (QA #17)', () => {
+  it('renders the text on the device from the snapshot', () => {
+    const party = (id: string, ticket: number, state: HostParty['state'], name: string) =>
+      ({
+        id,
+        ticket,
+        state,
+        sortKey: ticket,
+        arrived: true,
+        skipCount: 0,
+        upNextSent: false,
+        calledAt: null,
+        doneAt: null,
+        name,
+        token: `tok${ticket}xxxxxxxx`,
+      }) as HostParty;
+    const snap = {
+      event: { name: 'Pumpkin Patch Portraits', smsName: null, publicUrl: 'https://q.example.com' },
+      parties: [
+        party('a', 1, 'now_serving', 'Garcia Family'),
+        party('b', 2, 'up_next', 'Nguyen Family'),
+        party('c', 3, 'waiting', 'Émile Smith'),
+      ],
+    } as unknown as HostSnapshot;
+    const text = (partyId: string, template: PendingText['template']) =>
+      trayBody(snap, { id: 1, partyId, template, to: '+15552018830', createdAt: 0 });
+    expect(text('c', 'join')).toBe(
+      "Pumpkin Patch Portra: Emile, you're #2 in line. Track live: https://q.example.com/s/tok3xxxxxxxx",
+    );
+    expect(text('a', 'your_turn')).toBe(
+      "Pumpkin Patch Portra: Garcia, it's your turn! Please come to the camera now.",
+    );
+    expect(text('gone', 'join')).toBe('');
+  });
+});
+
+describe('QA nits', () => {
+  it('drops the "2 away" promise once the guest is already Up next', () => {
+    const me = (state: string, hasPhone = true) => ({ state, hasPhone });
+    expect(guestNote(me('waiting'), 2)).toBe(
+      "Stay nearby. We'll text you when you're 2 away and again when it's your turn.",
+    );
+    expect(guestNote(me('up_next'), 2)).toBe("Stay nearby. We'll text you when it's your turn.");
+    expect(guestNote(me('up_next'), 2)).not.toMatch(/away/);
+    expect(guestNote(me('waiting'), 0)).toMatch(/when you're almost up/);
+    expect(guestNote(me('up_next', false), 2)).toBe('Keep this page open. It updates by itself.');
+    expect(guestNote(me('done'), 2)).toBeNull();
+    expect(guestNote(null, 2)).toBeNull();
+  });
+
+  it('labels an uncallable Call next as §2.5 now specifies', () => {
+    expect(callNextEmptyLabel(0, false)).toBe('Line is empty');
+    expect(callNextEmptyLabel(3, false)).toBe('Nobody checked in');
+    expect(callNextEmptyLabel(3, true)).toBeNull();
   });
 });

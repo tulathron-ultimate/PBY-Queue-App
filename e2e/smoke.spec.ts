@@ -84,6 +84,10 @@ test('create event → add parties → check in → call next → guest sees it 
   await expect(guest.getByTestId('now-serving')).toContainText('Garcia F.');
   await expect(guest.getByTestId('position')).toHaveText('Next');
   await expect(guest.getByText("You're up next!")).toBeVisible();
+  // Already Up next, so the "we'll text you when you're 2 away" promise is gone (QA nit).
+  await expect(guest.getByTestId('guest-note')).toHaveText(
+    "Stay nearby. We'll text you when it's your turn.",
+  );
 
   // The tap-to-send tray opened with the "Your turn" text ready for Garcia
   await expect(page.getByTestId('text-card').first()).toBeVisible();

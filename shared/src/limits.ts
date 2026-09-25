@@ -1,4 +1,4 @@
-/** Field limits and defaults (FEATURES §2.2, §2.3, §2.6, §2.7, §2.10, §2.12). */
+/** Field limits and defaults (FEATURES §2.2, §2.6, §2.7, §2.10, §2.12). */
 export const LIMITS = {
   eventNameMax: 40,
   smsEventNameMax: 20,
@@ -16,13 +16,10 @@ export const LIMITS = {
   pinMaxLength: 12,
   upNextMin: 0,
   upNextMax: 5,
-  minutesPerPartyMin: 1,
-  minutesPerPartyMax: 15,
 } as const;
 
 export const DEFAULTS = {
   upNextN: 2,
-  minutesPerParty: 3,
   maxSkips: 2,
   reinsertSpotsBack: 3,
   retentionDays: 7,
@@ -31,6 +28,10 @@ export const DEFAULTS = {
   callNextDebounceMs: 1_000,
   guestPollMs: 15_000,
   sessionHours: 12,
+  /** Self-joins per (IP, event) per 10 minutes (§2.10); env SELF_JOIN_PER_IP. */
+  selfJoinPerIp: 60,
+  /** Twilio join texts from self-join per event per hour; env SELF_JOIN_TEXTS_PER_HOUR. */
+  selfJoinTextsPerHour: 60,
 } as const;
 
 /** PIN: 6–12 chars, digits or letters (§2.10). */

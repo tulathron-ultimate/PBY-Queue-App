@@ -16,7 +16,7 @@ Scale: Value 1 (nice) to 5 (essential). Effort S is under half a day, M is 1 to 
 | E3 | Helper devices | A second phone or tablet joins with the same PIN. All devices sync over WebSocket. | 4 | S | **MVP** | Last write wins. The server is the only authority on queue order. |
 | E4 | Event settings screen | Change N, SMS mode (tap-to-send or Twilio), self-join on/off, public name display. | 4 | S | **MVP** | |
 | E5 | Close / delete event | Close stops self-join and status updates. "Delete now" purges immediately. | 5 | S | **MVP** | Retention in §2.12. |
-| E6 | Pause queue ("On break") | Freezes wait estimates and shows "Photographer on a short break" to guests. | 3 | S | v1.1 | |
+| E6 | Pause queue ("On break") | Shows "Photographer on a short break" to guests. | 3 | S | v1.1 | |
 | E7 | Editable message templates | Per-event editing with a live 160-char and GSM-7 counter. | 3 | S | v1.1 | MVP ships the fixed defaults from §2.4. |
 | E8 | Export results CSV | Who was served, when, and no-shows. Useful for photo ordering. | 3 | S | v1.1 | Must happen before the retention purge. |
 | E9 | Multiple stations | Two or more photographers pulling from one queue, or several queues per event. | 2 | L | Later | |
@@ -69,11 +69,12 @@ Scale: Value 1 (nice) to 5 (essential). Effort S is under half a day, M is 1 to 
 
 | # | Feature | Description | Value | Effort | Release | Risk / notes |
 |---|---------|-------------|:-----:|:------:|:-------:|--------------|
-| G1 | Status page | `/s/{token}` shows your ticket #, your position ("3 ahead of you"), your state, who is up now, the estimated wait and the event name. | 5 | M | **MVP** | Live over WebSocket, with 15 s polling as a fallback. No login. |
+| G1 | Status page | `/s/{token}` shows your ticket #, your position ("You're #4", "3 ahead of you"), your state, who is up now and the event name. No wait time (see G6). | 5 | M | **MVP** | Live over WebSocket, with 15 s polling as a fallback. No login. |
 | G2 | Name privacy on public views | "Now serving" shows `#14 Emma R.` (first name plus last initial), or only `#14` if the host turns names off. | 4 | S | **MVP** | Protects children's full names. |
-| G3 | Leave line | The guest cancels from the status page (with a confirm step). | 4 | S | v1.1 | Improves estimate accuracy. |
+| G3 | Leave line | The guest cancels from the status page (with a confirm step). | 4 | S | v1.1 | Keeps positions accurate. |
 | G4 | "I'm here" check-in | Pairs with A8. | 4 | S | **MVP** | |
-| G5 | Lobby/TV board | `/e/{eventCode}/board` is a large read-only display of Now serving and Up next. | 3 | S | v1.1 | Uses the same privacy rule as G2. |
+| G5 | Lobby/TV board | `/e/{eventCode}/board` is a large read-only display of Now serving and Up next. | 3 | S | v1.1 | Uses the same privacy rule as G2. No wait time (G6). |
+| G6 | ~~Wait-time estimate~~ | **Removed by owner decision (2026-09-25):** "don't use wait times, as it can vary." No screen, text or display shows a wait time or ETA; guests see their position and how many are ahead. | – | – | **Removed** | See §2.3. |
 
 ### 1.6 Platform & privacy
 
@@ -104,24 +105,21 @@ The **position** is 1-based among `waiting` + `up_next` parties, ordered by `sor
 | Bulk case | When the queue first starts, or after an import, the top N parties get Up next at the same moment. |
 | Your turn SMS | Sent when a party becomes `now_serving`. In tap-to-send mode it is queued in the tray **after** the Up next texts, because Up next matters more when the host is short on time. |
 
-### 2.3 Wait-time estimate
+### 2.3 Wait-time estimate (removed)
 
-| Rule | Default |
-|------|---------|
-| Service time sample | The time from one party becoming `now_serving` until the next Call next or Skip. |
-| Average | The mean of the **last 5** samples. Samples under 15 s (misfires) or over 20 min (breaks) are ignored. |
-| Before any data | **3 min** per party |
-| Clamp | 1–15 min per party |
-| Formula | `wait = parties_ahead × avg`, rounded up to the nearest minute. Displayed as `~X min`. When the result is above 90, show `90+ min`. |
-| Party size | Ignored in MVP. v1.1 could weight parties larger than 6 people at ×1.5. |
+**Removed by owner decision (2026-09-25):** "don't use wait times, as it can vary." The app
+does not predict wait times anywhere: not on the guest status page, the join page, the host
+dashboard, in texts, or on a lobby display. There is no "minutes per party" setting. Guests
+see their position ("You're #4"), how many parties are ahead of them, who is being served now,
+and the Up next state. Do not replace the estimate with any other time prediction.
 
 ### 2.4 Message templates (GSM-7 only, each ≤160 chars rendered)
 
-Placeholders: `{event}` (≤20), `{name}` (first word of the display name, ≤12), `{pos}` (≤3 digits), `{wait}` (≤3), `{ticket}` (≤3), `{link}` (≤45, see §2.10).
+Placeholders: `{event}` (≤20), `{name}` (first word of the display name, ≤12), `{pos}` (≤3 digits), `{ticket}` (≤3), `{link}` (≤45, see §2.10). There is no wait or ETA placeholder (§2.3).
 
 | Key | Template | Max rendered length |
 |-----|----------|:----------:|
-| `join` | `{event}: {name}, you're #{pos} in line (~{wait} min). Track live: {link}` | 125 (148 with the STOP footer) |
+| `join` | `{event}: {name}, you're #{pos} in line. Track live: {link}` | 114 (137 with the STOP footer) |
 | `up_next` | `{event}: {name}, you're up next! Please head to the photo area now. Status: {link}` | 140 |
 | `your_turn` | `{event}: {name}, it's your turn! Please come to the camera now.` | 82 |
 | `skipped` | `{event}: {name}, we called you but missed you. Find the host to get back in line: {link}` | 146 |
@@ -136,7 +134,7 @@ Rules:
 1. The current `now_serving` party becomes `done` (with its timestamp recorded).
 2. The first party by `sort_key` among `up_next`/`waiting` becomes `now_serving`, which triggers `your_turn`.
 3. Up next is recomputed (§2.2).
-4. If the queue is empty, the button shows "Queue empty" and is disabled.
+4. If nobody can be called, the button is disabled and says **"Line is empty"** when no one is waiting, or **"Nobody checked in"** when everyone waiting is not here yet (A8). (Aligned with the UI and DESIGN H3 after QA; this replaces "Queue empty".)
 
 ### 2.6 Skip / no-show policy
 
@@ -190,12 +188,13 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 | Item | Default |
 |------|---------|
 | Status link token | **12 chars base62** from a CSPRNG (~71 bits). URL `https://{host}/s/{token}`. Keep `{host}` ≤25 chars so `{link}` stays ≤45. |
-| Event join code (QR) | 6 chars from base32 without ambiguous characters. URL `/j/{code}` |
+| Event join code (QR) | 6 chars from base32 without ambiguous characters. URL `/j/{code}`. Unknown codes on `GET /api/join/{code}` count toward the same per-IP miss limit as unknown status tokens (QA #16). |
 | Host PIN | **6 digits** minimum (up to 12 chars, digits or letters). Stored as a scrypt or argon2 hash, never in plain text. |
-| PIN brute force | 5 failures per IP per minute causes a 60 s block. 20 failures per event per hour lock the event for 15 min. |
+| PIN brute force | 5 failures per IP per minute causes a 60 s block. **20 failures per (event, IP) per hour lock that event for that IP for 15 min**, so a stranger holding the public join code only locks themselves out. Backstop: **200 failures per event per hour** from all addresses together lock the event for everyone for 15 min. (Was 20 per event; changed by owner decision after QA #14.) |
 | Host session | An HttpOnly, Secure, SameSite=Lax cookie, valid for 12 h and cleared when the event closes. |
 | Status endpoint | 60 req/min per IP. An unknown token returns a generic 404. |
-| Self-join | 10 joins per IP per 10 min. One active party per phone per event (a duplicate returns the existing status link). Honeypot field; no CAPTCHA in MVP. |
+| Self-join | **60 joins per (IP, event) per 10 min**, configurable with the `SELF_JOIN_PER_IP` env var. Keyed per event because families at one venue share a Wi-Fi or carrier NAT address (was 10 per IP; changed by owner decision after QA #13). One active party per phone per event (a duplicate returns the existing status link). Honeypot field; no CAPTCHA in MVP. The 500 active-party cap (§2.7) still applies. |
+| Twilio join texts from self-join | **60 per event per hour** (env `SELF_JOIN_TEXTS_PER_HOUR`), so strangers with the QR code can't run up the Twilio bill by joining with numbers they know. Parties over the cap still join; their join text is not sent automatically and instead waits in the host's "Texts to send" tray, with a banner on the dashboard (QA #15). Host-added parties and Up next / Your turn texts are not capped. |
 
 ### 2.11 SMS opt-out & Twilio compliance
 
@@ -215,7 +214,7 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 
 | Data | Retention |
 |------|-----------|
-| Event auto-close | 12 h after the last host action, or at the manual close. |
+| Event auto-close | 12 h after the last host action, or at the manual close. Only authenticated host changes count (stored as `last_host_action_at`); guest self-joins, "I'm here" taps and simply viewing the dashboard do not (QA #18). |
 | Party PII (names, phones, members, notes, tokens) | **Deleted 7 days after close.** "Delete now" is available at any time. |
 | Aggregate stats (counts, average service time) | Kept without PII. |
 | SMS send log | Kept with the PII and deleted with it. The body is never stored, only the template key and status. |

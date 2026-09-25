@@ -24,12 +24,16 @@ export interface AppContext {
   hub: Hub;
   limits: {
     pinIp: RateLimiter;
+    /** Wrong PINs per (event, IP): a stranger with the public join code only locks themselves out. */
     pinEvent: RateLimiter;
+    /** Backstop: wrong PINs per event from every address together. */
+    pinEventAll: RateLimiter;
     admin: RateLimiter;
     /** Unknown status tokens per IP (guessing). */
     status: RateLimiter;
     /** Requests per known status link. */
     statusToken: RateLimiter;
+    /** Self-joins per (IP, event), so families on one venue Wi-Fi don't share one budget. */
     join: RateLimiter;
   };
   setHostCookie(req: FastifyRequest, reply: FastifyReply, eventId: string, token: string): void;
@@ -81,10 +85,11 @@ export async function buildApp(
     limits: {
       pinIp: new RateLimiter(5, 60_000, 60_000),
       pinEvent: new RateLimiter(20, 3_600_000, 15 * 60_000),
+      pinEventAll: new RateLimiter(200, 3_600_000, 15 * 60_000),
       admin: new RateLimiter(5, 60_000, 60_000),
       status: new RateLimiter(60, 60_000),
       statusToken: new RateLimiter(60, 60_000),
-      join: new RateLimiter(10, 10 * 60_000),
+      join: new RateLimiter(cfg.selfJoinPerIp, 10 * 60_000),
     },
     setHostCookie(req, reply, eventId, token) {
       reply.setCookie(Sessions.cookieName(eventId), token, {

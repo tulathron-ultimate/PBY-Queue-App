@@ -6,7 +6,6 @@ import {
   completeCurrent,
   findNextToCall,
   move,
-  partiesAheadForWait,
   positionOf,
   recomputeUpNext,
   reinsert,
@@ -25,10 +24,7 @@ const N = 2;
 const T0 = 1_000_000;
 
 /** Starts a line with Up next computed, typed like any other queue result. */
-const start = (parties: QueueParty[]): QueueResult<QueueParty> => ({
-  ...recomputeUpNext(parties, N),
-  sampleMs: null,
-});
+const start = (parties: QueueParty[]): QueueResult<QueueParty> => recomputeUpNext(parties, N);
 
 describe('recomputeUpNext', () => {
   it('marks the first N arrived parties up_next and texts each once (bulk case)', () => {
@@ -82,13 +78,11 @@ describe('callNext', () => {
       { partyId: 'p3', template: 'up_next' },
       { partyId: 'p1', template: 'your_turn' },
     ]);
-    expect(r.sampleMs).toBeNull();
 
     r = callNext(r.parties, N, T0 + 90_000);
     const p1 = r.parties.find((p) => p.id === 'p1')!;
     expect(p1.state).toBe('done');
     expect(p1.doneAt).toBe(T0 + 90_000);
-    expect(r.sampleMs).toBe(90_000);
     expect(states(r.parties)).toMatchObject({ p2: 'now_serving', p3: 'up_next', p4: 'up_next' });
   });
 
@@ -117,7 +111,6 @@ describe('callNext', () => {
     const r1 = callNext(line(2), N, T0);
     const r2 = completeCurrent(r1.parties, N, T0 + 30_000);
     expect(states(r2.parties)).toMatchObject({ p1: 'done', p2: 'up_next' });
-    expect(r2.sampleMs).toBe(30_000);
     expect(() => completeCurrent(r2.parties, N, T0)).toThrow('nobody_serving');
   });
 });
@@ -134,7 +127,6 @@ describe('skip and re-insert', () => {
       { partyId: 'p2', template: 'your_turn' },
       { partyId: 'p1', template: 'skipped' },
     ]);
-    expect(r.sampleMs).toBe(20_000);
   });
 
   it('re-inserts a skipped party 3 spots back (position 4) with a fresh Up next', () => {
@@ -163,7 +155,7 @@ describe('skip and re-insert', () => {
 
   it('the 3rd skip marks no_show, which re-inserts at the end', () => {
     let parties = line(8);
-    let r = { parties, effects: [], sampleMs: null } as ReturnType<typeof callNext>;
+    let r = { parties, effects: [] } as ReturnType<typeof callNext>;
     for (let i = 0; i < 3; i++) {
       r = serveNow(r.parties, 'p1', N, T0 + i);
       r = skipCurrent(r.parties, N, T0 + i + 1);
@@ -226,8 +218,6 @@ describe('positions and undo', () => {
     expect(positionOf(parties, 'p3')).toBe(2);
     expect(positionOf(parties, 'p4')).toBe(2);
     expect(positionOf(parties, 'p5')).toBeNull();
-    expect(partiesAheadForWait(parties, 'p4')).toBe(2);
-    expect(partiesAheadForWait(parties, 'p2')).toBe(1);
   });
 
   it('undo restores the queue fields but keeps parties added afterwards', () => {

@@ -1,4 +1,9 @@
-import type { GuestSnapshot, HostSnapshot } from '@pby/shared';
+import {
+  renderPartyText,
+  type GuestSnapshot,
+  type HostSnapshot,
+  type PendingText,
+} from '@pby/shared';
 import type { FastifyInstance } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { buildApp, type AppContext } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
+import { openDb } from '../src/db.js';
 import { runRetention } from '../src/retention.js';
 import { twilioSignature } from '../src/sms/twilio.js';
 
@@ -80,6 +86,12 @@ async function host(h: Harness, method: 'GET' | 'POST' | 'PATCH', path: string, 
     payload: method === 'GET' ? undefined : (payload ?? {}),
   });
   return res;
+}
+
+/** What a host device shows in the tap-to-send tray, rendered from the snapshot (QA #17). */
+function trayBody(s: HostSnapshot, t: PendingText): string {
+  const party = s.parties.find((p) => p.id === t.partyId)!;
+  return renderPartyText(s.event, s.parties, party, t.template);
 }
 
 async function snap(h: Harness): Promise<HostSnapshot> {
@@ -163,6 +175,37 @@ describe('events and auth', () => {
     expect(right.statusCode).toBe(429);
   });
 
+  it('locks wrong PINs per (event, IP), so a stranger only locks themselves out (QA #14)', async () => {
+    const h = await setup();
+    const login = (ip: string, pin: string) =>
+      h.app.inject({
+        method: 'POST',
+        url: '/api/host/login',
+        headers: { 'x-forwarded-for': ip },
+        payload: { code: h.code, pin }, // the join code printed in the public QR code
+      });
+    // A stranger guesses 20 PINs over 4 minutes (5 a minute is the per-IP rate limit).
+    const stranger: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      if (i && i % 5 === 0) advance(61_000);
+      stranger.push((await login('203.0.113.66', '000000')).statusCode);
+    }
+    expect(stranger.every((c) => c === 401)).toBe(true);
+    advance(61_000);
+    const locked = await login('203.0.113.66', PIN);
+    expect(locked.statusCode).toBe(423);
+    expect(locked.json().error).toBe('event_locked');
+    // The photographer's helper on another address still gets in.
+    expect((await login('198.51.100.7', PIN)).statusCode).toBe(200);
+    // Backstop: 200 wrong PINs an hour from any mix of addresses lock the event for everyone.
+    const all = h.ctx.limits.pinEventAll;
+    while (all.remaining(h.eventId, now()) > 1) all.hit(h.eventId, now());
+    expect((await login('192.0.2.1', '000000')).statusCode).toBe(401);
+    expect((await login('192.0.2.2', PIN)).statusCode).toBe(423);
+    advance(15 * 60_000 + 1);
+    expect((await login('192.0.2.2', PIN)).statusCode).toBe(200);
+  });
+
   it('allows at most 5 host sessions per event', async () => {
     const h = await setup(); // creator = session 1
     const statuses: number[] = [];
@@ -226,7 +269,7 @@ describe('queue flow (tap-to-send)', () => {
       ['up_next', '+15553094417'],
       ['your_turn', '+15552018830'],
     ]);
-    expect(s.pendingTexts[1].body).toBe(
+    expect(trayBody(s, s.pendingTexts[1])).toBe(
       "Pumpkin Patch Portra: Emma, it's your turn! Please come to the camera now.",
     );
 
@@ -235,7 +278,6 @@ describe('queue flow (tap-to-send)', () => {
     ).json();
     expect(g2.nowServing).toEqual({ ticket: 1, name: 'Emma R.', isMe: false });
     expect(g2.me!.position).toBe(1);
-    expect(g2.me!.waitText).toBe('~3 min');
 
     // Okafor (no phone) checks in from the status page (G4)
     const arrive = await h.app.inject({
@@ -310,10 +352,38 @@ describe('queue flow (tap-to-send)', () => {
     expect((await join({ name: 'Late' })).statusCode).toBe(409);
   });
 
-  it('rate-limits self-join to 10 per IP per 10 minutes', async () => {
+  it('limits self-join per (IP, event) to 60 per 10 minutes (QA #13)', async () => {
     const h = await setup();
+    const other = await h.app.inject({
+      method: 'POST',
+      url: '/api/events',
+      payload: { adminPassword: ADMIN, name: 'Santa Photos', pin: PIN },
+    });
+    const join = (code: string, i: number) =>
+      h.app.inject({
+        method: 'POST',
+        url: `/api/join/${code}`,
+        headers: { 'x-forwarded-for': '198.51.100.20' }, // one venue Wi-Fi
+        payload: { name: `Guest ${i}` },
+      });
+    // 60 families behind one shared address all get in; the 61st in 10 minutes is refused.
     const codes: number[] = [];
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 61; i++) codes.push((await join(h.code, i)).statusCode);
+    expect(codes.slice(0, 60).every((c) => c === 200)).toBe(true);
+    expect(codes[60]).toBe(429);
+    // The same address can still join a different event: the budget is per event.
+    expect((await join(other.json().code, 0)).statusCode).toBe(200);
+    // And the window slides: 10 minutes later the venue can join again.
+    advance(10 * 60_000 + 1);
+    expect((await join(h.code, 61)).statusCode).toBe(200);
+  });
+
+  it('reads SELF_JOIN_PER_IP from the environment', async () => {
+    expect(loadConfig({}).selfJoinPerIp).toBe(60);
+    expect(loadConfig({ SELF_JOIN_PER_IP: '5' }).selfJoinPerIp).toBe(5);
+    const h = await setup({ SELF_JOIN_PER_IP: '2' });
+    const codes: number[] = [];
+    for (let i = 0; i < 3; i++) {
       const r = await h.app.inject({
         method: 'POST',
         url: `/api/join/${h.code}`,
@@ -321,8 +391,49 @@ describe('queue flow (tap-to-send)', () => {
       });
       codes.push(r.statusCode);
     }
-    expect(codes.slice(0, 10).every((c) => c === 200)).toBe(true);
-    expect(codes[10]).toBe(429);
+    expect(codes).toEqual([200, 200, 429]);
+  });
+
+  it('never predicts a wait time: no estimate in guest, join, host or text payloads', async () => {
+    // Owner decision: wait times vary too much, so the app shows positions only.
+    const h = await setup();
+    for (const n of ['Garcia Family', 'Nguyen Family', 'Smith Family', 'Okafor']) {
+      await addManual(h, n, '555-201-8830');
+    }
+    advance(5000);
+    await host(h, 'POST', '/call-next');
+    const s = await snap(h);
+    const guest = await h.app.inject({ method: 'GET', url: `/api/status/${s.parties[3].token}` });
+    const join = await h.app.inject({ method: 'GET', url: `/api/join/${h.code}` });
+    expect(guest.json().me).toMatchObject({ position: 3 });
+    for (const body of [guest.body, join.body, JSON.stringify(s)]) {
+      expect(body).not.toMatch(/wait(Text|Minutes)|avgMinutes|minutesPerParty|\bmin\b|minute/i);
+    }
+    const joinText = trayBody(
+      s,
+      s.pendingTexts.find((t) => t.template === 'join')!,
+    );
+    expect(joinText).toMatch(/you're #\d+ in line\. Track live: https:/);
+    expect(joinText).not.toMatch(/min|~/);
+  });
+
+  it('limits join-code guessing with the same per-IP miss limit as status tokens (QA #16)', async () => {
+    const h = await setup();
+    const get = (path: string, ip = '203.0.113.9') =>
+      h.app.inject({ method: 'GET', url: path, headers: { 'x-forwarded-for': ip } });
+    expect((await get(`/api/join/${h.code}`)).statusCode).toBe(200);
+    // 30 wrong join codes plus 30 wrong status tokens share one budget of 60 misses a minute.
+    const misses: number[] = [];
+    for (let i = 0; i < 30; i++) misses.push((await get(`/api/join/ZZZZ${10 + i}`)).statusCode);
+    for (let i = 0; i < 30; i++)
+      misses.push((await get(`/api/status/AAAAAAAAA${100 + i}`)).statusCode);
+    expect(misses.every((c) => c === 404)).toBe(true);
+    // Now that address is cut off, even for a real code, while other addresses are fine.
+    expect((await get('/api/join/ZZZZZZ')).statusCode).toBe(429);
+    expect((await get(`/api/join/${h.code}`)).statusCode).toBe(429);
+    expect((await get(`/api/join/${h.code}`, '198.51.100.3')).statusCode).toBe(200);
+    advance(60_001);
+    expect((await get(`/api/join/${h.code}`)).statusCode).toBe(200);
   });
 
   it('returns a generic 404 for unknown status tokens', async () => {
@@ -401,11 +512,107 @@ describe('twilio mode', () => {
   });
 });
 
+describe('host snapshots carry no rendered texts (QA #17)', () => {
+  it('leaves bodies out of the tray; the device renders the same text the server would', async () => {
+    const h = await setup();
+    const rows = Array.from({ length: 300 }, (_, i) => ({
+      name: `Family ${i + 1}`,
+      phone: `555${String(2000000 + i).padStart(7, '0')}`,
+    }));
+    await host(h, 'POST', '/import', {
+      rows,
+      arrived: true,
+      consentConfirmed: true,
+      sendJoinTexts: true,
+    });
+    const res = await host(h, 'GET', '');
+    const s: HostSnapshot = res.json();
+    expect(s.pendingTexts.length).toBeGreaterThan(290);
+    for (const t of s.pendingTexts) expect(t).not.toHaveProperty('body');
+    expect(res.body).not.toContain('Track live');
+    // The same snapshot with rendered bodies (as it used to be sent) is much larger.
+    const withBodies = JSON.stringify({
+      ...s,
+      pendingTexts: s.pendingTexts.map((t) => ({ ...t, body: trayBody(s, t) })),
+    });
+    expect(res.body.length).toBeLessThan(withBodies.length * 0.85);
+    expect(s.event.publicUrl).toBe('https://q.example.com');
+    const last = s.pendingTexts.at(-1)!;
+    const party = s.parties.find((p) => p.id === last.partyId)!;
+    expect(trayBody(s, last)).toBe(
+      `Pumpkin Patch Portra: Family, you're #300 in line. Track live: https://q.example.com/s/${party.token}`,
+    );
+  });
+
+  it('matches what Twilio sends, byte for byte', async () => {
+    const h = await setup({
+      TWILIO_ACCOUNT_SID: 'AC123',
+      TWILIO_AUTH_TOKEN: 'secret-token',
+      TWILIO_FROM: '+15550001111',
+    });
+    await addManual(h, 'Garcia Family', '555-201-8830');
+    await addManual(h, 'Nguyen Family', '555-309-4417');
+    await addManual(h, 'Smith Family', '555-740-1122');
+    await h.ctx.service.pendingDispatch;
+    const s = await snap(h);
+    const smith = s.parties.find((p) => p.name === 'Smith Family')!;
+    const sent = h.sent.find((m) => m.to === smith.phone)!;
+    expect(sent.body).toBe(
+      renderPartyText(s.event, s.parties, smith, 'join', { stopFooter: true }),
+    );
+  });
+});
+
+describe('Twilio self-join text cap (QA #15)', () => {
+  it('caps automatic join texts per event per hour; the rest wait in the tray', async () => {
+    const h = await setup({
+      TWILIO_ACCOUNT_SID: 'AC123',
+      TWILIO_AUTH_TOKEN: 'secret-token',
+      TWILIO_FROM: '+15550001111',
+      SELF_JOIN_TEXTS_PER_HOUR: '2',
+    });
+    // Three parties already in line, so self-joiners get a join text (not Up next).
+    for (const n of ['A One', 'B Two', 'C Three']) await addManual(h, n);
+    const join = (i: number) =>
+      h.app.inject({
+        method: 'POST',
+        url: `/api/join/${h.code}`,
+        headers: { 'x-forwarded-for': `203.0.113.${i}` },
+        payload: { name: `Guest ${i}`, phone: `555-201-88${10 + i}`, consent: true },
+      });
+    for (let i = 0; i < 4; i++) {
+      expect((await join(i)).statusCode).toBe(200); // everyone still joins
+      await h.ctx.service.pendingDispatch;
+    }
+    expect(h.sent.map((m) => m.to)).toEqual(['+15552018810', '+15552018811']);
+    // The host sees the other two in the Texts to send tray.
+    const s = await snap(h);
+    expect(s.pendingTexts.map((t) => [t.template, t.to])).toEqual([
+      ['join', '+15552018812'],
+      ['join', '+15552018813'],
+    ]);
+    // Host-added parties are not capped.
+    await addManual(h, 'Walk Up', '555-201-8899');
+    await h.ctx.service.pendingDispatch;
+    expect(h.sent.at(-1)!.to).toBe('+15552018899');
+    // An hour later automatic join texts resume for self-joins.
+    advance(3_600_000 + 1);
+    expect((await join(4)).statusCode).toBe(200);
+    await h.ctx.service.pendingDispatch;
+    expect(h.sent.at(-1)!.to).toBe('+15552018814');
+    expect(loadConfig({}).selfJoinTextsPerHour).toBe(60);
+  });
+});
+
 describe('retention', () => {
   it('purges party data 7 days after close and keeps aggregates', async () => {
     const h = await setup();
     const id = await addManual(h, 'Emma Rivera', '555-201-8830');
     const token = (await snap(h)).parties.find((p) => p.id === id)!.token;
+    advance(5000);
+    await host(h, 'POST', '/call-next');
+    advance(120_000);
+    await host(h, 'POST', '/complete');
     await host(h, 'POST', '/close');
     // Closing signs out every device
     expect((await host(h, 'GET', '')).statusCode).toBe(401);
@@ -421,6 +628,12 @@ describe('retention', () => {
     const r = runRetention(h.ctx.db, now(), { retentionDays: 7, autoCloseHours: 12, purge: true });
     expect(r.purged).toEqual([h.eventId]);
     expect(h.ctx.db.prepare('SELECT COUNT(*) n FROM parties').get()).toEqual({ n: 0 });
+    // Aggregates survive: 1 served, and the photo took 2 min (a record, not an estimate).
+    expect(
+      h.ctx.db
+        .prepare('SELECT served_count, avg_service_ms FROM events WHERE id = ?')
+        .get(h.eventId),
+    ).toEqual({ served_count: 1, avg_service_ms: 120_000 });
     expect((await h.app.inject({ method: 'GET', url: `/api/status/${token}` })).statusCode).toBe(
       404,
     );
@@ -431,6 +644,68 @@ describe('retention', () => {
     advance(13 * 3_600_000);
     const r = runRetention(h.ctx.db, now(), { retentionDays: 7, autoCloseHours: 12, purge: false });
     expect(r.autoClosed).toEqual([h.eventId]);
+  });
+});
+
+describe('auto-close uses host actions only (QA #18)', () => {
+  const sweep = (h: Harness) =>
+    runRetention(h.ctx.db, now(), { retentionDays: 7, autoCloseHours: 12, purge: false });
+
+  it('guest self-joins and "I\'m here" taps do not keep an idle event open', async () => {
+    const h = await setup();
+    await host(h, 'POST', '/import', { rows: [{ name: 'Rivera Family' }] });
+    const token = (await snap(h)).parties[0].token;
+    advance(11 * 3_600_000);
+    // Guests keep arriving after the photographer has gone home.
+    await h.app.inject({ method: 'POST', url: `/api/join/${h.code}`, payload: { name: 'Late' } });
+    await h.app.inject({ method: 'POST', url: `/api/status/${token}/arrive`, payload: {} });
+    const row = () =>
+      h.ctx.db
+        .prepare('SELECT last_action_at a, last_host_action_at host FROM events WHERE id = ?')
+        .get(h.eventId) as { a: number; host: number };
+    expect(row().a).toBe(now());
+    expect(row().host).toBe(now() - 11 * 3_600_000);
+    advance(1 * 3_600_000 + 1);
+    expect(sweep(h).autoClosed).toEqual([h.eventId]);
+  });
+
+  it('adds last_host_action_at to an existing database without losing data', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pby-qa-'));
+    const path = join(dir, 'old.db');
+    // Build a version-1 database: today's schema minus the new column.
+    const db = openDb(path);
+    db.exec(`ALTER TABLE events DROP COLUMN last_host_action_at`);
+    db.pragma('user_version = 1');
+    db.prepare(
+      `INSERT INTO events (id, code, name, date, pin_hash, up_next_n, minutes_per_party, sms_mode,
+        self_join, show_names, public_url, created_at, last_action_at)
+       VALUES ('ev1', 'ABCDEF', 'Old', '2026-09-01', 'x', 2, 3, 'tap', 1, 1, 'https://q', 1, 42)`,
+    ).run();
+    db.close();
+    const upgraded = openDb(path);
+    expect(upgraded.pragma('user_version', { simple: true })).toBe(2);
+    expect(upgraded.prepare('SELECT name, last_host_action_at h FROM events').get()).toEqual({
+      name: 'Old',
+      h: 42,
+    });
+    upgraded.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a host action resets the idle clock; reading the dashboard does not', async () => {
+    const h = await setup();
+    advance(11 * 3_600_000);
+    await host(h, 'GET', ''); // just looking
+    advance(1 * 3_600_000 + 1);
+    expect(sweep(h).autoClosed).toEqual([h.eventId]);
+
+    const h2 = await setup();
+    advance(11 * 3_600_000);
+    await addManual(h2, 'Okafor'); // an authenticated host action
+    advance(2 * 3_600_000);
+    expect(sweep(h2).autoClosed).toEqual([]);
+    advance(10 * 3_600_000 + 1);
+    expect(sweep(h2).autoClosed).toEqual([h2.eventId]);
   });
 });
 
@@ -774,7 +1049,7 @@ describe('robustness', () => {
     expect(res.json().added).toBe(300);
     const last = (await snap(h)).parties.at(-1)!;
     const status = (await h.app.inject({ method: 'GET', url: `/api/status/${last.token}` })).json();
-    expect(status.me).toMatchObject({ ticket: 300, position: 300, waitText: '90+ min' });
+    expect(status.me).toMatchObject({ ticket: 300, position: 300 });
     expect(JSON.stringify(status)).not.toContain('555');
     for (let i = 0; i < 300; i++) {
       advance(60_000);

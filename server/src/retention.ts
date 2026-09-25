@@ -1,5 +1,4 @@
 /** Data retention (§2.12): auto-close idle events and purge party PII after close. */
-import { averageMinutes } from '@pby/shared';
 import { getMeta, setMeta, type DB } from './db.js';
 
 const DAY = 86_400_000;
@@ -13,12 +12,16 @@ export function purgeEvent(db: DB, eventId: string, now: number): void {
          FROM parties WHERE event_id = ?`,
       )
       .get(eventId) as { served: number | null; no_show: number | null };
-    const ev = db
-      .prepare('SELECT samples, minutes_per_party FROM events WHERE id = ?')
-      .get(eventId) as { samples: string; minutes_per_party: number } | undefined;
-    if (!ev) return;
-    const samples = JSON.parse(ev.samples) as number[];
-    const avgMs = samples.length ? Math.round(averageMinutes(samples) * 60_000) : null;
+    if (!db.prepare('SELECT 1 FROM events WHERE id = ?').get(eventId)) return;
+    // Aggregate kept after the purge (§2.12): how long a photo took on average, from the
+    // parties that were served. This is a record of the past, not a wait prediction.
+    const avg = db
+      .prepare(
+        `SELECT AVG(done_at - called_at) AS ms FROM parties
+         WHERE event_id = ? AND state = 'done' AND called_at IS NOT NULL AND done_at IS NOT NULL`,
+      )
+      .get(eventId) as { ms: number | null };
+    const avgMs = avg.ms === null ? null : Math.round(avg.ms);
     db.prepare('DELETE FROM sms_log WHERE event_id = ?').run(eventId);
     db.prepare('DELETE FROM undo_stack WHERE event_id = ?').run(eventId);
     db.prepare('DELETE FROM sessions WHERE event_id = ?').run(eventId);
@@ -48,7 +51,11 @@ export interface RetentionOptions {
 export function runRetention(db: DB, now: number, opts: RetentionOptions): RetentionResult {
   const autoClosed = (
     db
-      .prepare(`SELECT id FROM events WHERE status = 'open' AND last_action_at < ?`)
+      // Host actions only: guest self-joins and "I'm here" taps must not keep an event open.
+      .prepare(
+        `SELECT id FROM events WHERE status = 'open'
+           AND COALESCE(last_host_action_at, last_action_at) < ?`,
+      )
       .all(now - opts.autoCloseHours * 3_600_000) as { id: string }[]
   ).map((r) => r.id);
   for (const id of autoClosed) {

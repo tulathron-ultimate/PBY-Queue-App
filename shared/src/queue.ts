@@ -16,8 +16,6 @@ export interface SmsEffect {
 export interface QueueResult<T extends QueueParty> {
   parties: T[];
   effects: SmsEffect[];
-  /** Service-time sample (ms) produced by this action (§2.3), if any. */
-  sampleMs: number | null;
 }
 
 export type QueueErrorCode =
@@ -76,18 +74,6 @@ export function positionOf(parties: readonly QueueParty[], id: string): number |
   return ahead + 1;
 }
 
-/** Parties ahead for the wait estimate: arrived active parties ahead, plus the one being served. */
-export function partiesAheadForWait(parties: readonly QueueParty[], id: string): number | null {
-  const pos = positionOf(parties, id);
-  if (pos === null || pos === 0) return pos === 0 ? 0 : null;
-  return pos - 1 + (findNowServing(parties) ? 1 : 0);
-}
-
-/** Wait for someone joining the end of the line now. */
-export function partiesAheadForNewcomer(parties: readonly QueueParty[]): number {
-  return orderActive(parties).filter((p) => p.arrived).length + (findNowServing(parties) ? 1 : 0);
-}
-
 function replace<T extends QueueParty>(parties: readonly T[], id: string, patch: Partial<T>): T[] {
   return parties.map((p) => (p.id === id ? { ...p, ...patch } : p));
 }
@@ -138,7 +124,6 @@ export function recomputeUpNext<T extends QueueParty>(
 function finish<T extends QueueParty>(
   parties: T[],
   n: number,
-  sampleMs: number | null,
   calledId: string | null,
   extra: SmsEffect[] = [],
 ): QueueResult<T> {
@@ -147,11 +132,7 @@ function finish<T extends QueueParty>(
   const effects = [...r.effects];
   if (calledId) effects.push({ partyId: calledId, template: 'your_turn' });
   effects.push(...extra);
-  return { parties: r.parties, effects, sampleMs };
-}
-
-function sampleFor(current: QueueParty | undefined, now: number): number | null {
-  return current?.calledAt != null ? now - current.calledAt : null;
+  return { parties: r.parties, effects };
 }
 
 /** Call next (§2.5): current → done, first arrived active → now_serving, recompute Up next. */
@@ -166,7 +147,7 @@ export function callNext<T extends QueueParty>(
   let out = [...parties];
   if (current) out = replace(out, current.id, { state: 'done', doneAt: now } as Partial<T>);
   out = replace(out, next.id, { state: 'now_serving', calledAt: now } as Partial<T>);
-  return finish(out, n, sampleFor(current, now), next.id);
+  return finish(out, n, next.id);
 }
 
 /** "Done" on the Now-serving card without calling anyone else. */
@@ -178,7 +159,7 @@ export function completeCurrent<T extends QueueParty>(
   const current = findNowServing(parties);
   if (!current) throw new QueueError('nobody_serving');
   const out = replace(parties, current.id, { state: 'done', doneAt: now } as Partial<T>);
-  return finish(out, n, sampleFor(current, now), null);
+  return finish(out, n, null);
 }
 
 /**
@@ -198,9 +179,7 @@ export function skipCurrent<T extends QueueParty>(
   let out = replace(parties, current.id, { state, skipCount, doneAt: now } as Partial<T>);
   const next = findNextToCall(out);
   if (next) out = replace(out, next.id, { state: 'now_serving', calledAt: now } as Partial<T>);
-  return finish(out, n, sampleFor(current, now), next?.id ?? null, [
-    { partyId: current.id, template: 'skipped' },
-  ]);
+  return finish(out, n, next?.id ?? null, [{ partyId: current.id, template: 'skipped' }]);
 }
 
 /** "Serve now" on any active or missed party: current → done, this one → now_serving. */
@@ -217,7 +196,7 @@ export function serveNow<T extends QueueParty>(
   let out = [...parties];
   if (current) out = replace(out, current.id, { state: 'done', doneAt: now } as Partial<T>);
   out = replace(out, id, { state: 'now_serving', calledAt: now, arrived: true } as Partial<T>);
-  return finish(out, n, sampleFor(current, now), id);
+  return finish(out, n, id);
 }
 
 /**
@@ -258,7 +237,7 @@ export function reinsert<T extends QueueParty>(
     parties.map((p) => (p.id === id ? updated : p)),
     ordered,
   );
-  return finish(out, n, null, null);
+  return finish(out, n, null);
 }
 
 export type MoveDirection = 'up' | 'down' | 'next';
@@ -278,7 +257,7 @@ export function move<T extends QueueParty>(
   if (j < 0 || j >= ordered.length || j === i) throw new QueueError('already_there');
   const [item] = ordered.splice(i, 1);
   ordered.splice(j, 0, item);
-  return finish(applyOrder(parties, ordered), n, null, null);
+  return finish(applyOrder(parties, ordered), n, null);
 }
 
 /** Q7: Remove from line. Removed parties vanish from lists. */
@@ -291,7 +270,7 @@ export function removeParty<T extends QueueParty>(
   const target = requireParty(parties, id);
   if (target.state === 'removed' || target.state === 'done') throw new QueueError('not_active');
   const out = replace(parties, id, { state: 'removed', doneAt: now } as Partial<T>);
-  return finish(out, n, null, null);
+  return finish(out, n, null);
 }
 
 /** A8 / G4: arrival check-in (a flag, not a state). */
@@ -302,8 +281,8 @@ export function setArrived<T extends QueueParty>(
   n: number,
 ): QueueResult<T> {
   const target = requireParty(parties, id);
-  if (target.arrived === arrived) return { parties: [...parties], effects: [], sampleMs: null };
-  return finish(replace(parties, id, { arrived } as Partial<T>), n, null, null);
+  if (target.arrived === arrived) return { parties: [...parties], effects: [] };
+  return finish(replace(parties, id, { arrived } as Partial<T>), n, null);
 }
 
 /**
@@ -318,11 +297,11 @@ export function addParties<T extends QueueParty>(
 ): QueueResult<T> {
   if (position === 'next') {
     const ordered = [...added, ...orderActive(parties)];
-    return finish(applyOrder([...parties, ...added], ordered), n, null, null);
+    return finish(applyOrder([...parties, ...added], ordered), n, null);
   }
   let key = parties.reduce((max, p) => Math.max(max, p.sortKey), 0);
   const withKeys = added.map((p) => ({ ...p, sortKey: ++key }));
-  return finish([...parties, ...withKeys], n, null, null);
+  return finish([...parties, ...withKeys], n, null);
 }
 
 /** The queue fields captured for Undo. */
@@ -363,5 +342,5 @@ export function restoreSnapshot<T extends QueueParty>(
     if (!s) return p;
     return { ...p, ...s, upNextSent: s.upNextSent || alreadyTexted.has(p.id) };
   });
-  return finish(out, n, null, null);
+  return finish(out, n, null);
 }

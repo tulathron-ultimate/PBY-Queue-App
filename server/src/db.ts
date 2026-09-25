@@ -98,6 +98,12 @@ const MIGRATIONS: string[] = [
     created_at INTEGER NOT NULL
   );
   `,
+  // 2: auto-close (§2.12) counts only host actions; guest self-joins and "I'm here" taps also
+  // move last_action_at. Additive: existing events start from their last activity.
+  `
+  ALTER TABLE events ADD COLUMN last_host_action_at INTEGER;
+  UPDATE events SET last_host_action_at = last_action_at;
+  `,
 ];
 
 export function openDb(path: string): DB {

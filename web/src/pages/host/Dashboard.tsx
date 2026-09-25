@@ -14,6 +14,7 @@ import { haptics } from '../../platform/haptics';
 import { useWakeLock } from '../../platform/wakeLock';
 import { navigate } from '../../router';
 import { AddPeopleSheet } from './AddPeopleSheet';
+import { callNextEmptyLabel } from './callNextLabel';
 import type { HostContext } from './HostEvent';
 import { ImportReview } from './ImportReview';
 import { PartyEditor } from './PartyEditor';
@@ -156,6 +157,8 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
   }, [snap.pendingTexts]);
   const pendingUpNext = snap.pendingTexts.filter((t) => t.template === 'up_next').length;
   const tapMode = snap.event.smsMode === 'tap' || !snap.twilioAvailable;
+  // Twilio mode: join texts over the hourly self-join cap wait in the tray (QA #15).
+  const heldTexts = tapMode ? 0 : snap.pendingTexts.length;
 
   useEffect(() => {
     const prev = lastServing.current;
@@ -316,12 +319,20 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
             This event has ended. Guests can no longer join or see updates.
           </div>
         )}
+        {heldTexts > 0 && !closed && (
+          <div className="banner" role="status" data-testid="held-texts">
+            The hourly limit for automatic join texts was reached. {heldTexts}{' '}
+            {heldTexts === 1 ? 'text waits' : 'texts wait'} for you to send from this phone.{' '}
+            <button type="button" className="linkbtn" onClick={() => setPanel({ kind: 'texts' })}>
+              Texts to send
+            </button>
+          </div>
+        )}
         <div className="counts">
           <span>{active.length} waiting ·</span>
           <button type="button" onClick={() => setShowDone((v) => !v)} aria-pressed={showDone}>
             {doneCount} done
           </button>
-          <span>· ~{Math.round(snap.avgMinutes * 10) / 10} min each</span>
         </div>
 
         {serving ? (
@@ -563,7 +574,7 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
                   </>
                 ) : (
                   <span className="big" style={{ fontSize: 'var(--fs-lg)' }}>
-                    {active.length ? 'Nobody checked in' : 'Line is empty'}
+                    {callNextEmptyLabel(active.length, false)}
                   </span>
                 )}
               </button>
@@ -643,7 +654,7 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
             >
               <Icon name="check" /> {showDone ? 'Hide' : 'Show'} done &amp; removed
             </button>
-            {tapMode && (
+            {(tapMode || heldTexts > 0) && (
               <button
                 type="button"
                 className="btn secondary left"

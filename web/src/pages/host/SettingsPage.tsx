@@ -56,19 +56,6 @@ export function SettingsPage({ ctx }: { ctx: HostContext }) {
                 label="Up next spots"
               />
             </div>
-            <div className="setrow">
-              <span>
-                Minutes per party<span className="sub">Until we learn your pace</span>
-              </span>
-              <Stepper
-                small
-                value={e.minutesPerParty}
-                min={LIMITS.minutesPerPartyMin}
-                max={LIMITS.minutesPerPartyMax}
-                onChange={(v) => void save({ minutesPerParty: v })}
-                label="Minutes per party"
-              />
-            </div>
             <Toggle
               label="Guests can join by QR code"
               checked={e.selfJoin}

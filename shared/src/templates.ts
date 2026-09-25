@@ -1,8 +1,9 @@
 /** SMS templates and rendering (FEATURES §2.4). GSM-7 only, ≤160 chars rendered. */
-import type { TemplateKey } from './types.js';
+import { positionOf } from './queue.js';
+import type { QueueParty, TemplateKey } from './types.js';
 
 export const TEMPLATES: Readonly<Record<TemplateKey, string>> = {
-  join: "{event}: {name}, you're #{pos} in line (~{wait} min). Track live: {link}",
+  join: "{event}: {name}, you're #{pos} in line. Track live: {link}",
   up_next: "{event}: {name}, you're up next! Please head to the photo area now. Status: {link}",
   your_turn: "{event}: {name}, it's your turn! Please come to the camera now.",
   skipped:
@@ -104,13 +105,12 @@ export interface TemplateVars {
   event: string;
   name: string;
   pos?: number | string;
-  wait?: number | string;
   ticket?: number | string;
   link?: string;
 }
 
 function fill(template: string, v: Required<TemplateVars>): string {
-  return template.replace(/\{(event|name|pos|wait|ticket|link)\}/g, (_, key: keyof TemplateVars) =>
+  return template.replace(/\{(event|name|pos|ticket|link)\}/g, (_, key: keyof TemplateVars) =>
     String(v[key]),
   );
 }
@@ -131,7 +131,6 @@ export function renderSms(
     event: toSmsSafe(vars.event).slice(0, SMS_EVENT_MAX).trim(),
     name: smsFirstName(vars.name),
     pos: vars.pos ?? '',
-    wait: vars.wait ?? '',
     ticket: vars.ticket ?? '',
     link: vars.link ?? '',
   };
@@ -147,4 +146,41 @@ export function renderSms(
     text = fill(template, values);
   }
   return text + footer;
+}
+
+/** The event fields a party's text needs. `HostEventInfo` and the server's event record fit. */
+export interface TextEvent {
+  name: string;
+  smsName: string | null;
+  /** Base URL of texted links, e.g. `https://q.example.com`. */
+  publicUrl: string;
+}
+
+/** A party's private status page, `{publicUrl}/s/{token}`. */
+export function statusUrl(publicUrl: string, token: string): string {
+  return `${publicUrl}/s/${token}`;
+}
+
+/**
+ * Renders the text for one party as it is now. The server uses it for Twilio, and host devices
+ * use it for the tap-to-send tray, so snapshots never carry rendered bodies.
+ */
+export function renderPartyText(
+  event: TextEvent,
+  parties: readonly QueueParty[],
+  party: QueueParty & { name: string; token: string },
+  template: TemplateKey,
+  opts: { stopFooter?: boolean } = {},
+): string {
+  return renderSms(
+    template,
+    {
+      event: smsEventName(event.name, event.smsName),
+      name: party.name,
+      pos: positionOf(parties, party.id) ?? '',
+      ticket: party.ticket,
+      link: statusUrl(event.publicUrl, party.token),
+    },
+    { stopFooter: opts.stopFooter },
+  );
 }

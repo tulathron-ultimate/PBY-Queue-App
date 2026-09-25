@@ -102,8 +102,9 @@ export function Join({ code }: { code: string }) {
             className="badge b-waiting b-big"
             style={{ marginBottom: 16, textTransform: 'none', letterSpacing: 0 }}
           >
-            {info.lineLength} {info.lineLength === 1 ? 'group' : 'groups'} ahead ·{' '}
-            {info.lineLength ? `about ${info.waitText.replace('~', '')}` : 'no wait'}
+            {info.lineLength
+              ? `${info.lineLength} ${info.lineLength === 1 ? 'group' : 'groups'} ahead of you`
+              : 'Nobody waiting right now'}
           </div>
         )}
         {closed ? (
