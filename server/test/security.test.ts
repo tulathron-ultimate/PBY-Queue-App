@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, type AppContext } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
-import { clientKey } from '../src/security.js';
+import { clientKey, RateLimiter } from '../src/security.js';
 
 const ADMIN = 'admin-secret';
 const PIN = '246810';
@@ -281,5 +281,28 @@ describe('SEC-5 per-IP limits survive address rotation', () => {
       payload: { adminPassword: ADMIN, name: 'X', pin: PIN },
     });
     expect(right.statusCode).toBe(429);
+  });
+});
+
+describe('SEC-6 rate-limiter memory is bounded', () => {
+  it('caps the number of tracked keys, dropping expired ones first', () => {
+    const limiter = new RateLimiter(5, 60_000, 60_000, 100);
+    const t = 1_000_000;
+    for (let i = 0; i < 5; i++) limiter.hit('attacker', t);
+    expect(limiter.retryAfter('attacker', t)).toBeGreaterThan(0);
+    for (let i = 0; i < 10_000; i++) limiter.hit(`k${i}`, t + 1 + i);
+    expect(limiter['hits'].size).toBeLessThanOrEqual(100);
+    expect(limiter['blockedUntil'].size).toBeLessThanOrEqual(100);
+    // Evicting counters never lifts an active block.
+    expect(limiter.retryAfter('attacker', t + 10_001)).toBeGreaterThan(0);
+    // Keys past their window are dropped without waiting for the 15-minute sweep.
+    const later = t + 200_000;
+    limiter.hit('fresh', later);
+    expect(limiter['hits'].size).toBeLessThanOrEqual(100);
+  });
+
+  it('gives every app limiter a key cap', async () => {
+    const h = await setup();
+    for (const l of Object.values(h.ctx.limits)) expect(l['maxKeys']).toBeLessThanOrEqual(100_000);
   });
 });

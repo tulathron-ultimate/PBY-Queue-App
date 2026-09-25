@@ -94,12 +94,29 @@ export function clientKey(ip: string): string {
 export class RateLimiter {
   private hits = new Map<string, number[]>();
   private blockedUntil = new Map<string, number>();
+  private lastPrune = 0;
 
   constructor(
     private readonly limit: number,
     private readonly windowMs: number,
     private readonly blockMs = 0,
+    /**
+     * SEC-6: most keys tracked at once. Past it, expired keys are dropped, then the oldest,
+     * so a flood of new addresses can't exhaust memory between the 15-minute sweeps.
+     */
+    private readonly maxKeys = 50_000,
   ) {}
+
+  /** Makes room for one more key in `map`. */
+  private makeRoom(map: Map<string, unknown>, now: number): void {
+    if (map.size < this.maxKeys) return;
+    // A full scan at most once a second, so a flood can't make every request O(keys).
+    if (now - this.lastPrune >= 1000) this.prune(now);
+    for (const key of map.keys()) {
+      if (map.size < this.maxKeys) break;
+      map.delete(key); // Maps iterate in insertion order: the oldest go first.
+    }
+  }
 
   private recent(key: string, now: number): number[] {
     const list = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
@@ -125,8 +142,10 @@ export class RateLimiter {
     if (this.retryAfter(key, now) > 0) return false;
     const list = this.recent(key, now);
     list.push(now);
+    if (!this.hits.has(key)) this.makeRoom(this.hits, now);
     this.hits.set(key, list);
     if (list.length >= this.limit && this.blockMs) {
+      this.makeRoom(this.blockedUntil, now);
       this.blockedUntil.set(key, now + this.blockMs);
       this.hits.delete(key);
     }
@@ -143,6 +162,7 @@ export class RateLimiter {
   }
 
   prune(now = Date.now()): void {
+    this.lastPrune = now;
     for (const key of this.hits.keys()) this.recent(key, now);
     for (const [key, until] of this.blockedUntil) if (until <= now) this.blockedUntil.delete(key);
   }
