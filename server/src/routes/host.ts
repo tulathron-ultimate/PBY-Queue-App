@@ -60,6 +60,23 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
 
     host.get<EventParams>('/api/host/events/:id', async (req) => snapshot(req.params.id));
 
+    /**
+     * E8 results CSV. A plain GET with the session cookie (SameSite=Lax); it changes nothing.
+     * The BOM makes Excel read UTF-8; the file name is ASCII only.
+     */
+    host.get<EventParams & { Querystring: { tz?: string } }>(
+      '/api/host/events/:id/export.csv',
+      async (req, reply) => {
+        const { fileName, csv } = service.resultsCsv(req.params.id, req.query.tz);
+        return reply
+          .header('Content-Type', 'text/csv; charset=utf-8')
+          .header('Content-Disposition', `attachment; filename="${fileName}"`)
+          .header('Cache-Control', 'no-store')
+          .header('X-Content-Type-Options', 'nosniff')
+          .send(`\uFEFF${csv}`);
+      },
+    );
+
     host.post<EventParams>('/api/host/events/:id/call-next', async (req) => {
       service.callNext(req.params.id);
       return snapshot(req.params.id);

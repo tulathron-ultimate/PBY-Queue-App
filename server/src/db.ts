@@ -118,6 +118,10 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE events ADD COLUMN lobby_token_hash TEXT;
   CREATE UNIQUE INDEX events_lobby_token_hash ON events(lobby_token_hash);
   `,
+  // 5: E8 export needs the check-in time. Unknown (NULL) for parties from before this version.
+  `
+  ALTER TABLE parties ADD COLUMN arrived_at INTEGER;
+  `,
 ];
 
 export function openDb(path: string): DB {

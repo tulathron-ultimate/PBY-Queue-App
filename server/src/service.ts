@@ -5,6 +5,7 @@
  */
 import {
   addParties as addToQueue,
+  buildResultsCsv,
   callNext as queueCallNext,
   clampInt,
   cleanPauseMessage,
@@ -16,6 +17,7 @@ import {
   LIMITS,
   maskPhone,
   move as queueMove,
+  resultsFileName,
   pausedTextEffects,
   QueueError,
   recomputeUpNext,
@@ -479,8 +481,11 @@ export class QueueService {
       // E6: while the line is paused (as it is after `fn`), Up next texts wait for Resume.
       if (this.store.getEvent(eventId)?.paused) r = { ...r, ...holdUpNextTexts(r) };
       const old = new Map(before.map((p) => [p.id, p]));
-      for (const p of r.parties) {
-        const prev = old.get(p.id);
+      for (const q of r.parties) {
+        const prev = old.get(q.id);
+        // E8 export: record when a party is checked in; clear it when checked back out.
+        const arrivedAt = !q.arrived ? null : prev?.arrived ? prev.arrivedAt : now;
+        const p = arrivedAt === q.arrivedAt ? q : { ...q, arrivedAt };
         if (!prev) this.store.insertParty(p);
         else if (queueChanged(prev, p)) this.store.updatePartyQueue(p);
       }
@@ -759,6 +764,7 @@ export class QueueService {
         calledAt: null,
         doneAt: null,
         createdAt: now,
+        arrivedAt: null,
       }));
       this.store.updateEvent(eventId, { nextTicket: ticket });
       const r = addToQueue(parties, added, event.upNextN, opts.position);
@@ -944,6 +950,20 @@ export class QueueService {
     } else {
       this.onChange(eventId);
     }
+  }
+
+  /**
+   * E8 results export for photo ordering, open or closed, until the retention purge (after
+   * which the event is gone and this is a 404). Times are local to `timeZone` (else UTC).
+   */
+  resultsCsv(eventId: string, timeZone: unknown): { fileName: string; csv: string } {
+    const event = this.requireEvent(eventId);
+    const parties = this.store.listParties(eventId);
+    this.log.info({ event: eventId, rows: parties.length }, 'results exported');
+    return {
+      fileName: resultsFileName(event.name, event.date),
+      csv: buildResultsCsv(parties, typeof timeZone === 'string' ? timeZone : 'UTC'),
+    };
   }
 
   /** E5 close: stops self-join and status updates, and signs out every host device. */
