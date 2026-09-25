@@ -16,8 +16,8 @@ import {
 
 afterEach(closeApps);
 
-async function makeLink(h: Harness): Promise<string> {
-  const res = await host(h, 'POST', '/lobby');
+async function makeLink(h: Harness, payload: object = {}): Promise<string> {
+  const res = await host(h, 'POST', '/lobby', payload);
   expect(res.statusCode, res.body).toBe(200);
   const url = (res.json() as HostSnapshot).event.lobbyUrl!;
   expect(url).toMatch(/^https:\/\/q\.example\.com\/d\/[A-Za-z0-9_-]{24}$/);
@@ -62,7 +62,7 @@ describe('lobby display link (G5)', () => {
   it('uses a fresh 144-bit token each time and looks it up by hash', async () => {
     const h = await setup();
     const a = await makeLink(h);
-    const b = await makeLink(h);
+    const b = await makeLink(h, { replace: true });
     expect(a).not.toBe(b);
     const row = h.ctx.db
       .prepare('SELECT lobby_token_hash FROM events WHERE id = ?')
@@ -204,7 +204,7 @@ describe('lobby display live updates (G5)', () => {
     const old = await makeLink(h);
     const sock = await openLobbySocket(h, old);
     await sock.waitFor(() => true);
-    const fresh = await makeLink(h);
+    const fresh = await makeLink(h, { replace: true });
     expect(await sock.closed).toBe(4404);
     const again = await openLobbySocket(h, fresh);
     expect((await again.waitFor(() => true)).eventName).toBe('Pumpkin Patch Portraits');

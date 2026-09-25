@@ -256,3 +256,22 @@ describe('SEC-19 "we\'re paused" texts go at most once per party per hour', () =
     expect(s.pendingTexts.filter((t) => t.template === 'paused')).toHaveLength(0);
   });
 });
+
+describe('SEC-21 making a TV link from two helper devices does not kill the first TV', () => {
+  it('returns the existing link unless the host asks to replace it', async () => {
+    const h = await setup();
+    const a = await makeLink(h);
+    const tv = await openLobbySocket(h, a);
+    await tv.first;
+    // A second helper, whose Share screen still showed "Make a TV link", taps it.
+    const b = await makeLink(h);
+    expect(b).toBe(a);
+    await settle();
+    expect(tv.closedWith()).toBeNull();
+    expect((await lobby(h, a)).statusCode).toBe(200);
+    // An explicit replace still rotates the token and disconnects the old display.
+    const c = await makeLink(h, { replace: true });
+    expect(c).not.toBe(a);
+    expect(await tv.closed).toBe(4404);
+  });
+});

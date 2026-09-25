@@ -102,9 +102,10 @@ export function registerHostRoutes(app: FastifyInstance, ctx: AppContext): void 
       return snapshot(req.params.id);
     });
 
-    /** G5: make (or replace) the lobby display link, or turn it off. */
+    /** G5: make the lobby display link (`replace: true` rotates it), or turn it off. */
     host.post<EventParams>('/api/host/events/:id/lobby', async (req) => {
-      service.setLobbyLink(req.params.id, true);
+      const body = (req.body ?? {}) as Body;
+      service.setLobbyLink(req.params.id, true, body.replace === true);
       ctx.hub.broadcastLobbies(req.params.id); // displays on the old link disconnect now
       return snapshot(req.params.id);
     });

@@ -244,7 +244,7 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 |------|---------|
 | Link | `https://{host}/d/{token}`: 18 random bytes (144 bits), base64url (24 chars). The host makes it on the Share screen ("Make a TV link", then "Open on TV" copies it). None exists until the host makes one. |
 | Storage | The token (so any host device can show it again) and its SHA-256, which lookups use, followed by a constant-time compare. |
-| Revoke | "Turn off TV link" clears it; making a new link replaces the old one. Either way, displays on the old link are disconnected at once. The purge (§2.12) clears it too. |
+| Revoke | "Turn off TV link" clears it. "Make a TV link" returns the existing link if there is one (two helper devices can't cut off each other's TV); the API rotates it only with `{"replace": true}`. On a revoke or rotation, displays on the old link are disconnected at once. The purge (§2.12) clears it too. |
 | Payload | Built from an allowlist: event name, ended flag, pause state and message, now serving and the next **5** arrived parties as ticket + G2 name ("Emma R.", or null when names are off), and the join link and QR path (null when self-join is off). No phone numbers, party ids, status tokens, notes, members or sizes. |
 | Limits | Unknown tokens count toward the per-IP miss limit shared with status links and join codes (§2.10); each real link gets 60 requests a minute. Tokens are redacted from logs, and every response has `Referrer-Policy: no-referrer`. |
 | Display | Always dark, 16:9 (stacks when held upright), keeps the screen awake, reconnects on its own with 15 s polling as a fallback. |

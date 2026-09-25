@@ -315,11 +315,14 @@ export class QueueService {
   }
 
   /**
-   * G5: makes a new lobby display link (replacing any old one, which stops working) or, with
-   * `on` false, revokes it. Open displays on an old link are disconnected by the hub.
+   * G5: makes a lobby display link or, with `on` false, revokes it. An existing link is kept
+   * unless `replace` is set (SEC-21: a second helper tapping "Make a TV link" on a stale screen
+   * must not cut off a TV already showing the first one). Open displays on a replaced or
+   * revoked link are disconnected by the hub.
    */
-  setLobbyLink(eventId: string, on: boolean): void {
-    this.requireEvent(eventId, on ? { open: true } : {});
+  setLobbyLink(eventId: string, on: boolean, replace = false): void {
+    const event = this.requireEvent(eventId, on ? { open: true } : {});
+    if (on && !replace && event.lobbyToken) return;
     const token = on ? newLobbyToken() : null;
     this.store.updateEvent(eventId, {
       lobbyToken: token,
