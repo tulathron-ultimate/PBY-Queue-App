@@ -370,3 +370,37 @@ describe('SEC-7 WebSocket connection limits', () => {
     expect(other.closedWith).toBeNull();
   });
 });
+
+describe('SEC-8 names cannot carry bidi overrides or invisible characters', () => {
+  // U+202E flips the rest of the line, U+2066 isolates, U+200B/U+2060 are invisible, U+0007 is
+  // a control character and U+3164 renders as a blank "name".
+  const HOSTILE = 'Emma\u202E seviR\u2066\u200B\u2060\u0007\u3164';
+
+  it('strips them from self-joined, host-added and event names', async () => {
+    const h = await setup();
+    const join = await h.app.inject({
+      method: 'POST',
+      url: `/api/join/${h.code}`,
+      payload: { name: HOSTILE, phone: '' },
+    });
+    expect(join.statusCode, join.body).toBe(200);
+    await addManual(h, `Linh\u202ENguyen`);
+    const blank = await host(h, 'POST', '/parties', { name: '\u3164\u200B', phone: '' });
+    expect(blank.statusCode).toBe(400);
+    await host(h, 'PATCH', '/settings', { name: 'Fall\u202E Photos\u0000' });
+    const s = await snap(h);
+    const bad =
+      // eslint-disable-next-line no-control-regex -- matching control characters is the point
+      /[\u0000-\u001f\u007f-\u009f\u061C\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\u3164]/;
+    expect(s.parties.map((p) => p.name)).toEqual(['Emma seviR', 'LinhNguyen']);
+    expect(s.event.name).toBe('Fall Photos');
+    const status = await h.app.inject({ method: 'GET', url: `/api/status/${join.json().token}` });
+    expect(status.body).not.toMatch(bad);
+  });
+
+  it('keeps emoji sequences and accented names', async () => {
+    const h = await setup();
+    await addManual(h, 'Zoë 👨\u200D👩\u200D👧 Ñúñez');
+    expect((await snap(h)).parties[0].name).toBe('Zoë 👨\u200D👩\u200D👧 Ñúñez');
+  });
+});
