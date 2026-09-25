@@ -163,6 +163,37 @@ describe('events and auth', () => {
     expect(right.statusCode).toBe(429);
   });
 
+  it('locks wrong PINs per (event, IP), so a stranger only locks themselves out (QA #14)', async () => {
+    const h = await setup();
+    const login = (ip: string, pin: string) =>
+      h.app.inject({
+        method: 'POST',
+        url: '/api/host/login',
+        headers: { 'x-forwarded-for': ip },
+        payload: { code: h.code, pin }, // the join code printed in the public QR code
+      });
+    // A stranger guesses 20 PINs over 4 minutes (5 a minute is the per-IP rate limit).
+    const stranger: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      if (i && i % 5 === 0) advance(61_000);
+      stranger.push((await login('203.0.113.66', '000000')).statusCode);
+    }
+    expect(stranger.every((c) => c === 401)).toBe(true);
+    advance(61_000);
+    const locked = await login('203.0.113.66', PIN);
+    expect(locked.statusCode).toBe(423);
+    expect(locked.json().error).toBe('event_locked');
+    // The photographer's helper on another address still gets in.
+    expect((await login('198.51.100.7', PIN)).statusCode).toBe(200);
+    // Backstop: 200 wrong PINs an hour from any mix of addresses lock the event for everyone.
+    const all = h.ctx.limits.pinEventAll;
+    while (all.remaining(h.eventId, now()) > 1) all.hit(h.eventId, now());
+    expect((await login('192.0.2.1', '000000')).statusCode).toBe(401);
+    expect((await login('192.0.2.2', PIN)).statusCode).toBe(423);
+    advance(15 * 60_000 + 1);
+    expect((await login('192.0.2.2', PIN)).statusCode).toBe(200);
+  });
+
   it('allows at most 5 host sessions per event', async () => {
     const h = await setup(); // creator = session 1
     const statuses: number[] = [];

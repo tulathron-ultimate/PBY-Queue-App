@@ -26,11 +26,11 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
         'Set ADMIN_PASSWORD on the server first.',
       );
     }
-    const wait = limits.admin.retryAfter(req.ip);
+    const wait = limits.admin.retryAfter(req.ip, service.now());
     if (wait)
       throw new ServiceError(429, 'rate_limited', `Try again in ${wait} s.`, { retryAfter: wait });
     if (!safeEqual(String(body.adminPassword ?? ''), cfg.adminPassword)) {
-      limits.admin.hit(req.ip);
+      limits.admin.hit(req.ip, service.now());
       throw new ServiceError(401, 'wrong_admin_password', 'Wrong admin password.');
     }
     const event = await service.createEvent(body, ctx.originOf(req));
@@ -49,7 +49,8 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
   /** E2/E3: unlock one event with its PIN (by event id or join code). */
   app.post('/api/host/login', async (req, reply) => {
     const body = (req.body ?? {}) as Body;
-    const ipWait = limits.pinIp.retryAfter(req.ip);
+    const now = service.now();
+    const ipWait = limits.pinIp.retryAfter(req.ip, now);
     if (ipWait) {
       throw new ServiceError(429, 'rate_limited', `Too many tries. Try again in ${ipWait} s.`, {
         retryAfter: ipWait,
@@ -61,8 +62,14 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
         : typeof body.code === 'string'
           ? service.store.getEventByCode(body.code.trim())
           : null;
+    // Wrong PINs lock the event per (event, IP), so a stranger holding the public join code
+    // only locks themselves out; a much higher per-event count is a backstop against many IPs.
+    const eventIpKey = event ? `${event.id} ${req.ip}` : '';
     if (event && !event.purgedAt) {
-      const lock = limits.pinEvent.retryAfter(event.id);
+      const lock = Math.max(
+        limits.pinEvent.retryAfter(eventIpKey, now),
+        limits.pinEventAll.retryAfter(event.id, now),
+      );
       if (lock) {
         throw new ServiceError(
           423,
@@ -77,9 +84,12 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
     const ok =
       event && !event.purgedAt ? await verifyPin(String(body.pin ?? ''), event.pinHash) : false;
     if (!ok || !event) {
-      limits.pinIp.hit(req.ip);
-      if (event) limits.pinEvent.hit(event.id);
-      const triesLeft = limits.pinIp.remaining(req.ip);
+      limits.pinIp.hit(req.ip, now);
+      if (event) {
+        limits.pinEvent.hit(eventIpKey, now);
+        limits.pinEventAll.hit(event.id, now);
+      }
+      const triesLeft = limits.pinIp.remaining(req.ip, now);
       throw new ServiceError(401, 'wrong_pin', 'Wrong PIN.', { triesLeft });
     }
     const token = service.sessions.create(event.id);
@@ -156,12 +166,13 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: AppContext): voi
   const statusGuard = (ip: string, token: string) => {
     const tooMany = () =>
       new ServiceError(429, 'rate_limited', 'Too many requests. Try again in a minute.');
-    if (limits.status.retryAfter(ip) > 0) throw tooMany();
+    const now = service.now();
+    if (limits.status.retryAfter(ip, now) > 0) throw tooMany();
     if (!service.store.getPartyByToken(token)) {
-      limits.status.hit(ip);
+      limits.status.hit(ip, now);
       return;
     }
-    if (!limits.statusToken.hit(token)) throw tooMany();
+    if (!limits.statusToken.hit(token, now)) throw tooMany();
   };
 
   /** G1 status (polling fallback). Unknown tokens get a generic 404. */

@@ -190,7 +190,7 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 | Status link token | **12 chars base62** from a CSPRNG (~71 bits). URL `https://{host}/s/{token}`. Keep `{host}` ≤25 chars so `{link}` stays ≤45. |
 | Event join code (QR) | 6 chars from base32 without ambiguous characters. URL `/j/{code}` |
 | Host PIN | **6 digits** minimum (up to 12 chars, digits or letters). Stored as a scrypt or argon2 hash, never in plain text. |
-| PIN brute force | 5 failures per IP per minute causes a 60 s block. 20 failures per event per hour lock the event for 15 min. |
+| PIN brute force | 5 failures per IP per minute causes a 60 s block. **20 failures per (event, IP) per hour lock that event for that IP for 15 min**, so a stranger holding the public join code only locks themselves out. Backstop: **200 failures per event per hour** from all addresses together lock the event for everyone for 15 min. (Was 20 per event; changed by owner decision after QA #14.) |
 | Host session | An HttpOnly, Secure, SameSite=Lax cookie, valid for 12 h and cleared when the event closes. |
 | Status endpoint | 60 req/min per IP. An unknown token returns a generic 404. |
 | Self-join | **60 joins per (IP, event) per 10 min**, configurable with the `SELF_JOIN_PER_IP` env var. Keyed per event because families at one venue share a Wi-Fi or carrier NAT address (was 10 per IP; changed by owner decision after QA #13). One active party per phone per event (a duplicate returns the existing status link). Honeypot field; no CAPTCHA in MVP. The 500 active-party cap (§2.7) still applies. |
