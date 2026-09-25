@@ -252,6 +252,10 @@ svg.icon {
 .content.with-bar {
   padding-bottom: calc(128px + env(safe-area-inset-bottom));
 }
+/* The dashboard's Call next bar is max(80px, 25vh) tall plus 28px of padding (Q2). */
+.content.with-callbar {
+  padding-bottom: calc(max(80px, 25vh) + 28px + 16px + env(safe-area-inset-bottom));
+}
 
 .topbar {
   display: flex;

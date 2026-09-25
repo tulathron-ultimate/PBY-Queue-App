@@ -305,7 +305,7 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
         </button>
       </header>
 
-      <div className="content with-bar">
+      <div className="content with-bar with-callbar">
         {live.state === 'offline' && (
           <div className="banner danger" role="status">
             Offline. Showing the last update; actions need a connection.
