@@ -180,6 +180,7 @@ export class QueueService {
       nextTicket: 1,
       createdAt: now,
       lastActionAt: now,
+      lastHostActionAt: now,
       lastCallAt: null,
       closedAt: null,
       purgedAt: null,
@@ -201,6 +202,11 @@ export class QueueService {
       throw new ServiceError(409, 'event_closed', 'This event has ended.');
     }
     return event;
+  }
+
+  /** Records a host action for auto-close (§2.12). Called only by authenticated host routes. */
+  touchHost(eventId: string): void {
+    this.store.updateEvent(eventId, { lastHostActionAt: this.now() });
   }
 
   /* ------------------------------------------------------------- snapshots */

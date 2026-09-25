@@ -113,6 +113,8 @@ templates and rules), then `DESIGN.md`, and otherwise the simplest reasonable op
 
 ## Retention and operations
 
+- Auto-close uses `events.last_host_action_at`, which only authenticated host requests that
+  change something move (added by an additive migration and backfilled from `last_action_at`).
 - The retention sweep runs every 15 minutes for the 12-hour auto-close; the purge part runs at
   startup and every 24 hours, with `VACUUM` at most weekly (§2.12).
 - The Docker image installs with `--ignore-scripts`: better-sqlite3 13 ships prebuilt binaries for

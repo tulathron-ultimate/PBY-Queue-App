@@ -51,7 +51,11 @@ export interface RetentionOptions {
 export function runRetention(db: DB, now: number, opts: RetentionOptions): RetentionResult {
   const autoClosed = (
     db
-      .prepare(`SELECT id FROM events WHERE status = 'open' AND last_action_at < ?`)
+      // Host actions only: guest self-joins and "I'm here" taps must not keep an event open.
+      .prepare(
+        `SELECT id FROM events WHERE status = 'open'
+           AND COALESCE(last_host_action_at, last_action_at) < ?`,
+      )
       .all(now - opts.autoCloseHours * 3_600_000) as { id: string }[]
   ).map((r) => r.id);
   for (const id of autoClosed) {

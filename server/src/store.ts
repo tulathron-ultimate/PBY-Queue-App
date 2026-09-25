@@ -27,6 +27,8 @@ export interface EventRecord {
   nextTicket: number;
   createdAt: number;
   lastActionAt: number;
+  /** Only authenticated host routes move this; auto-close uses it (§2.12). */
+  lastHostActionAt: number;
   lastCallAt: number | null;
   closedAt: number | null;
   purgedAt: number | null;
@@ -79,6 +81,7 @@ function toEvent(r: any): EventRecord {
     nextTicket: r.next_ticket,
     createdAt: r.created_at,
     lastActionAt: r.last_action_at,
+    lastHostActionAt: r.last_host_action_at ?? r.last_action_at,
     lastCallAt: r.last_call_at,
     closedAt: r.closed_at,
     purgedAt: r.purged_at,
@@ -147,10 +150,10 @@ export class Store {
         // owner's decision. The columns stay (NOT NULL) for existing databases but are unused.
         `INSERT INTO events (id, code, name, sms_name, date, pin_hash, up_next_n, minutes_per_party,
           sms_mode, self_join, show_names, host_consent, status, public_url, next_ticket,
-          created_at, last_action_at)
+          created_at, last_action_at, last_host_action_at)
          VALUES (@id, @code, @name, @smsName, @date, @pinHash, @upNextN, 0,
           @smsMode, @selfJoin, @showNames, @hostConsent, @status, @publicUrl, @nextTicket,
-          @createdAt, @lastActionAt)`,
+          @createdAt, @lastActionAt, @lastHostActionAt)`,
       )
       .run({
         ...e,
@@ -173,6 +176,7 @@ export class Store {
       status: 'status',
       nextTicket: 'next_ticket',
       lastActionAt: 'last_action_at',
+      lastHostActionAt: 'last_host_action_at',
       lastCallAt: 'last_call_at',
       closedAt: 'closed_at',
       purgedAt: 'purged_at',

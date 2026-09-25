@@ -213,7 +213,7 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 
 | Data | Retention |
 |------|-----------|
-| Event auto-close | 12 h after the last host action, or at the manual close. |
+| Event auto-close | 12 h after the last host action, or at the manual close. Only authenticated host changes count (stored as `last_host_action_at`); guest self-joins, "I'm here" taps and simply viewing the dashboard do not (QA #18). |
 | Party PII (names, phones, members, notes, tokens) | **Deleted 7 days after close.** "Delete now" is available at any time. |
 | Aggregate stats (counts, average service time) | Kept without PII. |
 | SMS send log | Kept with the PII and deleted with it. The body is never stored, only the template key and status. |

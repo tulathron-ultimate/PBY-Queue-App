@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { buildApp, type AppContext } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
+import { openDb } from '../src/db.js';
 import { runRetention } from '../src/retention.js';
 import { twilioSignature } from '../src/sms/twilio.js';
 
@@ -537,6 +538,68 @@ describe('retention', () => {
     advance(13 * 3_600_000);
     const r = runRetention(h.ctx.db, now(), { retentionDays: 7, autoCloseHours: 12, purge: false });
     expect(r.autoClosed).toEqual([h.eventId]);
+  });
+});
+
+describe('auto-close uses host actions only (QA #18)', () => {
+  const sweep = (h: Harness) =>
+    runRetention(h.ctx.db, now(), { retentionDays: 7, autoCloseHours: 12, purge: false });
+
+  it('guest self-joins and "I\'m here" taps do not keep an idle event open', async () => {
+    const h = await setup();
+    await host(h, 'POST', '/import', { rows: [{ name: 'Rivera Family' }] });
+    const token = (await snap(h)).parties[0].token;
+    advance(11 * 3_600_000);
+    // Guests keep arriving after the photographer has gone home.
+    await h.app.inject({ method: 'POST', url: `/api/join/${h.code}`, payload: { name: 'Late' } });
+    await h.app.inject({ method: 'POST', url: `/api/status/${token}/arrive`, payload: {} });
+    const row = () =>
+      h.ctx.db
+        .prepare('SELECT last_action_at a, last_host_action_at host FROM events WHERE id = ?')
+        .get(h.eventId) as { a: number; host: number };
+    expect(row().a).toBe(now());
+    expect(row().host).toBe(now() - 11 * 3_600_000);
+    advance(1 * 3_600_000 + 1);
+    expect(sweep(h).autoClosed).toEqual([h.eventId]);
+  });
+
+  it('adds last_host_action_at to an existing database without losing data', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pby-qa-'));
+    const path = join(dir, 'old.db');
+    // Build a version-1 database: today's schema minus the new column.
+    const db = openDb(path);
+    db.exec(`ALTER TABLE events DROP COLUMN last_host_action_at`);
+    db.pragma('user_version = 1');
+    db.prepare(
+      `INSERT INTO events (id, code, name, date, pin_hash, up_next_n, minutes_per_party, sms_mode,
+        self_join, show_names, public_url, created_at, last_action_at)
+       VALUES ('ev1', 'ABCDEF', 'Old', '2026-09-01', 'x', 2, 3, 'tap', 1, 1, 'https://q', 1, 42)`,
+    ).run();
+    db.close();
+    const upgraded = openDb(path);
+    expect(upgraded.pragma('user_version', { simple: true })).toBe(2);
+    expect(upgraded.prepare('SELECT name, last_host_action_at h FROM events').get()).toEqual({
+      name: 'Old',
+      h: 42,
+    });
+    upgraded.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a host action resets the idle clock; reading the dashboard does not', async () => {
+    const h = await setup();
+    advance(11 * 3_600_000);
+    await host(h, 'GET', ''); // just looking
+    advance(1 * 3_600_000 + 1);
+    expect(sweep(h).autoClosed).toEqual([h.eventId]);
+
+    const h2 = await setup();
+    advance(11 * 3_600_000);
+    await addManual(h2, 'Okafor'); // an authenticated host action
+    advance(2 * 3_600_000);
+    expect(sweep(h2).autoClosed).toEqual([]);
+    advance(10 * 3_600_000 + 1);
+    expect(sweep(h2).autoClosed).toEqual([h2.eventId]);
   });
 });
 
