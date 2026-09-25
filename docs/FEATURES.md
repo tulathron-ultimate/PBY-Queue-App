@@ -32,7 +32,7 @@ Scale: Value 1 (nice) to 5 (essential). Effort S is under half a day, M is 1 to 
 | A5 | QR / link self-join | Guest scans a QR code, enters name, phone, size and SMS consent, and joins the end of the line. | 5 | S | **MVP** | Rate limits in §2.10. The host shows the QR full-screen. |
 | A6 | Duplicate detection | Warns when a phone number already has an active party in the event. The host can still add it (siblings often share a parent's phone). | 4 | S | **MVP** | |
 | A7 | Group tag | Optional label per party, such as "U10 Hawks" or "Class 3B", with a filter chip on the host list. | 3 | S | v1.1 | The `Group` column is accepted by import in MVP and stored, just not yet used in the UI. |
-| A8 | Arrival check-in | Imported parties are "not arrived" and are skipped by Call next until checked in (by the host, or by the guest from the status link). | 4 | M | v1.1 | Implement as a boolean flag, not a new state. See open question 1. |
+| A8 | Arrival check-in | Imported parties are "not arrived" and are skipped by Call next until checked in (by the host, or by the guest from the status link). | 4 | M | **MVP** | Implement as a boolean flag, not a new state. Confirmed by user: rosters arrive over time. |
 | A9 | Linked groups | A team photo followed by the individual photos of its members, with dependencies. | 2 | L | Later | |
 
 ### 1.3 Queue & host actions (one-handed)
@@ -72,7 +72,7 @@ Scale: Value 1 (nice) to 5 (essential). Effort S is under half a day, M is 1 to 
 | G1 | Status page | `/s/{token}` shows your ticket #, your position ("3 ahead of you"), your state, who is up now, the estimated wait and the event name. | 5 | M | **MVP** | Live over WebSocket, with 15 s polling as a fallback. No login. |
 | G2 | Name privacy on public views | "Now serving" shows `#14 Emma R.` (first name plus last initial), or only `#14` if the host turns names off. | 4 | S | **MVP** | Protects children's full names. |
 | G3 | Leave line | The guest cancels from the status page (with a confirm step). | 4 | S | v1.1 | Improves estimate accuracy. |
-| G4 | "I'm here" check-in | Pairs with A8. | 4 | S | v1.1 | |
+| G4 | "I'm here" check-in | Pairs with A8. | 4 | S | **MVP** | |
 | G5 | Lobby/TV board | `/e/{eventCode}/board` is a large read-only display of Now serving and Up next. | 3 | S | v1.1 | Uses the same privacy rule as G2. |
 
 ### 1.6 Platform & privacy
@@ -227,5 +227,5 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 
 ## 3. Open questions for the user (≤3)
 
-1. **Imported rosters:** are all imported people already on site, and is the file already in shooting order? If not, "Arrival check-in" (A8) should move from v1.1 to MVP.
+1. ~~**Imported rosters:**~~ Resolved: arrival check-in (A8, G4) is in MVP.
 2. **Twilio at launch?** Tap-to-send works with no setup, but automated texts need A2P 10DLC or toll-free registration, which takes days to weeks. Should registration start now, before the first event?
