@@ -29,7 +29,8 @@ export function normalizePhone(input: string | null | undefined): PhoneResult {
         ? { ok: true, e164: `+1${national}`, international: false }
         : { ok: false, reason: 'invalid' };
     }
-    if (digits.length >= 8 && digits.length <= 15) {
+    // E.164 country codes never start with 0 (`+0…`, `+00…` are typos or dial prefixes).
+    if (digits.length >= 8 && digits.length <= 15 && !digits.startsWith('0')) {
       return { ok: true, e164: `+${digits}`, international: true };
     }
     return { ok: false, reason: 'invalid' };

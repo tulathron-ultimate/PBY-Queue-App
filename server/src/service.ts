@@ -564,6 +564,9 @@ export class QueueService {
 
   /** Validates party input with the same rules as the import preview (§2.7, §2.8). */
   private validateParty(input: Partial<ImportPartyInput>, row = 1): ImportPartyInput {
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+      throw new ServiceError(400, 'bad_row', `Row ${row} is not a party.`, { row });
+    }
     const members = Array.isArray(input.members) ? input.members.map((m) => String(m)) : [];
     const draft = {
       name: typeof input.name === 'string' ? input.name : '',

@@ -669,4 +669,12 @@ describe('QA regressions', () => {
     expect(s.parties.find((p) => p.id === id)!.lastText).toMatchObject({ status: 'failed' });
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it('answers 400, not 500, to malformed import rows', async () => {
+    const h = await setup();
+    for (const rows of [[null], ['Garcia'], [42], [[]]]) {
+      const res = await host(h, 'POST', '/import', { rows });
+      expect(res.statusCode, JSON.stringify(rows)).toBe(400);
+    }
+  });
 });

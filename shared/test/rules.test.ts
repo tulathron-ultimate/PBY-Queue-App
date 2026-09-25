@@ -60,6 +60,8 @@ describe('phone normalization (§2.9)', () => {
     '555-123-4567',
     '2-555-234-5678',
     'abc',
+    '+0123456789', // no E.164 country code starts with 0
+    '+00 44 20 7946 0958',
   ])('rejects %s', (input) => {
     expect(normalizePhone(input).ok).toBe(false);
   });
@@ -247,6 +249,15 @@ describe('Excel/CSV import (§2.8)', () => {
     expect(annotateDuplicates(parsed.rows, new Map())[3].issues.map((i) => i.code)).toContain(
       'duplicate',
     );
+  });
+
+  it('keeps at most 40 characters of an invalid phone entry', () => {
+    const [row] = parseImportTable([
+      ['Name', 'Phone'],
+      ['Garbage', 'x'.repeat(5000)],
+    ]).rows;
+    expect(row.phoneInvalidInput).toHaveLength(40);
+    expect(row.issues[0].message.length).toBeLessThan(120);
   });
 
   it('reports a missing Name column', () => {

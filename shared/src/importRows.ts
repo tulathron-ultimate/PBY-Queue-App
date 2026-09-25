@@ -107,6 +107,9 @@ export function splitMembers(value: string): string[] {
     .filter(Boolean);
 }
 
+/** Longest invalid phone entry kept for the host to fix. */
+export const PHONE_INPUT_MAX = 40;
+
 export function validateDraft(draft: ImportDraft, rowNumber: number): ImportRow {
   const issues: ImportIssue[] = [];
   const name = draft.name.trim().replace(/\s+/g, ' ');
@@ -126,7 +129,8 @@ export function validateDraft(draft: ImportDraft, rowNumber: number): ImportRow 
   else if (phoneResult.reason === 'empty') {
     issues.push({ level: 'warning', code: 'no_phone', message: "No phone. Can't be texted." });
   } else {
-    phoneInvalidInput = draft.phone.trim();
+    // Kept so the host can fix it, but bounded: a hostile file could put megabytes here.
+    phoneInvalidInput = draft.phone.trim().slice(0, PHONE_INPUT_MAX);
     issues.push({
       level: 'warning',
       code: 'invalid_phone',
