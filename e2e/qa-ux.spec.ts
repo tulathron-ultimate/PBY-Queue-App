@@ -112,7 +112,10 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByTestId('now-serving')).toContainText('Garcia');
     await expectPhoneFriendly(page, 'dashboard, serving');
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/host-dashboard-${theme}.png` });
+    if (SHOTS) {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: `${SHOTS}/host-dashboard-${theme}.png` });
+    }
 
     await page.getByTestId('row-2').locator('button.main').click();
     const statusHref = await page.getByTestId('status-link').getAttribute('href');
