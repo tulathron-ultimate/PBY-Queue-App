@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PBY Queue Mockups</title>
+<style>
+/* ===== Design tokens (see DESIGN.md §1) ===== */
+:root, .light {
+  --bg:#FFFFFF; --surface:#F2F4F7; --surface-2:#E3E7ED; --border:#8A94A3;
+  --text:#0A0A0A; --text-muted:#3A4250;
+  --primary:#1537B8; --on-primary:#FFFFFF; --danger:#B3121B; --on-danger:#FFFFFF;
+  --scrim:rgba(0,0,0,.55);
+  --waiting:#4A5361;  --on-waiting:#FFF;  --waiting-tint:#F2F4F7;
+  --upnext:#F5A300;   --on-upnext:#000;   --upnext-tint:#FFF1CC;
+  --serving:#067A4A;  --on-serving:#FFF;  --serving-tint:#D6F5E6;
+  --done:#5B6472;     --on-done:#FFF;     --done-tint:#FFFFFF;
+  --skipped:#6B2FD6;  --on-skipped:#FFF;  --skipped-tint:#EEE6FF;
+  --noshow:#B3121B;   --on-noshow:#FFF;   --noshow-tint:#FFE3E4;
+  --shadow:0 -4px 24px rgba(0,0,0,.18);
+}
+.dark {
+  --bg:#000000; --surface:#14171B; --surface-2:#232830; --border:#4A5361;
+  --text:#F7F8FA; --text-muted:#C3CAD4;
+  --primary:#8FB0FF; --on-primary:#000000; --danger:#FF7A7F; --on-danger:#000;
+  --scrim:rgba(0,0,0,.7);
+  --waiting:#A7B0BD;  --on-waiting:#000;  --waiting-tint:#14171B;
+  --upnext:#FFC23D;   --on-upnext:#000;   --upnext-tint:#3A2A00;
+  --serving:#3DDC97;  --on-serving:#000;  --serving-tint:#06301F;
+  --done:#6E7785;     --on-done:#FFF;     --done-tint:#000;
+  --skipped:#B79BFF;  --on-skipped:#000;  --skipped-tint:#24163F;
+  --noshow:#FF7A7F;   --on-noshow:#000;   --noshow-tint:#3D0B0E;
+  --shadow:0 -4px 24px rgba(0,0,0,.6);
+}
+
+/* ===== Page chrome (not part of the app) ===== */
+* { box-sizing:border-box; }
+html, body { margin:0; }
+body {
+  background:#D9DDE3; color:#111;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  padding:24px 16px 64px;
+}
+.page-head { max-width:1200px; margin:0 auto 24px; }
+.page-head h1 { margin:0 0 4px; font-size:28px; }
+.page-head p { margin:0; color:#333; font-size:15px; max-width:760px; }
+.legend { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+h2.group { max-width:1200px; margin:40px auto 12px; font-size:20px; }
+.row { display:flex; flex-wrap:wrap; gap:28px; justify-content:center; max-width:1600px; margin:0 auto; }
+figure { margin:0; display:flex; flex-direction:column; align-items:center; gap:10px; }
+figcaption { font-size:14px; font-weight:600; color:#222; text-align:center; max-width:360px; }
+figcaption small { display:block; font-weight:400; color:#444; margin-top:2px; }
+
+/* ===== Phone frame ===== */
+.phone {
+  width:360px; height:760px; border-radius:40px; border:10px solid #111; overflow:hidden;
+  background:var(--bg); color:var(--text); position:relative; display:flex; flex-direction:column;
+  font-size:18px; line-height:26px; box-shadow:0 12px 40px rgba(0,0,0,.25);
+  font-variant-numeric:tabular-nums;
+}
+.statusbar { height:28px; flex:none; display:flex; justify-content:space-between; align-items:center; padding:0 20px; font-size:13px; font-weight:700; }
+.scroll { flex:1; overflow:hidden; padding:0 16px; }
+.phone svg { width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+
+/* ===== Components ===== */
+.topbar { display:flex; align-items:center; gap:8px; height:56px; padding:0 8px 0 16px; flex:none; }
+.topbar .title { flex:1; font-size:20px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.iconbtn { width:48px; height:48px; border-radius:14px; display:grid; place-items:center; background:transparent; color:var(--text); border:0; }
+.live { font-size:13px; font-weight:800; padding:2px 10px; border-radius:999px; background:var(--serving-tint); color:var(--text); display:inline-flex; align-items:center; gap:6px; border:1.5px solid var(--serving); }
+.live::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--serving); }
+.counts { font-size:15px; font-weight:600; color:var(--text-muted); padding:0 0 10px; }
+
+.serving-card { background:var(--serving); color:var(--on-serving); border-radius:22px; padding:14px 16px; }
+.serving-card .lbl { font-size:13px; font-weight:800; letter-spacing:.1em; display:flex; justify-content:space-between; }
+.serving-card .name { font-size:28px; line-height:34px; font-weight:800; margin:4px 0 0; display:flex; align-items:center; gap:10px; }
+.serving-card .meta { font-size:16px; font-weight:600; opacity:.95; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card-actions { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px; }
+.card-actions button { height:52px; border-radius:14px; border:2px solid currentColor; background:transparent; color:inherit; font:inherit; font-weight:800; font-size:16px; display:flex; align-items:center; justify-content:center; gap:4px; white-space:nowrap; padding:0 4px; }
+.card-actions svg { width:20px !important; height:20px !important; }
+
+.tk { display:inline-grid; place-items:center; min-width:48px; height:34px; padding:0 6px; border-radius:8px; font-weight:900; font-size:17px; background:var(--surface-2); color:var(--text); }
+.serving-card .tk { background:rgba(255,255,255,.22); color:inherit; }
+.dark .serving-card .tk { background:rgba(0,0,0,.18); }
+
+.sec { display:flex; align-items:center; justify-content:space-between; margin:16px 0 8px; font-size:18px; font-weight:800; }
+.sec .l { display:flex; align-items:center; gap:8px; }
+.chip { height:40px; padding:0 14px; border-radius:999px; font-weight:800; font-size:16px; display:inline-flex; align-items:center; gap:6px; border:0; }
+.chip.upnext { background:var(--upnext); color:var(--on-upnext); }
+
+.qrow { display:flex; align-items:center; gap:10px; min-height:64px; padding:8px 4px 8px 12px; border-radius:14px; background:var(--waiting-tint); border-left:6px solid var(--waiting); margin-bottom:8px; }
+.qrow.upnext { background:var(--upnext-tint); border-left-color:var(--upnext); }
+.qrow.skipped { background:var(--skipped-tint); border-left-color:var(--skipped); }
+.qrow.noshow { background:var(--noshow-tint); border-left-color:var(--noshow); }
+.qrow.done { background:var(--done-tint); border-left-color:var(--done); color:var(--text-muted); }
+.qrow .body { flex:1; min-width:0; }
+.qrow .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:8px; }
+.qrow .sub { font-size:15px; line-height:20px; color:var(--text-muted); font-weight:600; }
+.size { display:inline-flex; align-items:center; gap:2px; font-size:15px; font-weight:700; color:var(--text-muted); }
+.size svg { width:16px !important; height:16px !important; }
+.sms { position:relative; }
+.sms.pending::after { content:""; position:absolute; top:9px; right:9px; width:11px; height:11px; border-radius:50%; background:var(--danger); border:2px solid var(--bg); }
+
+.badge { display:inline-flex; align-items:center; gap:4px; height:24px; padding:0 8px; border-radius:6px; font-size:13px; font-weight:800; }
+.b-waiting { background:var(--waiting); color:var(--on-waiting); }
+.b-upnext { background:var(--upnext); color:var(--on-upnext); }
+.b-serving { background:var(--serving); color:var(--on-serving); }
+.b-done { background:var(--done); color:var(--on-done); }
+.b-skipped { background:var(--skipped); color:var(--on-skipped); }
+.b-noshow { background:var(--noshow); color:var(--on-noshow); }
+
+.bottombar { flex:none; display:flex; gap:10px; padding:12px 16px 20px; background:var(--bg); box-shadow:var(--shadow); position:relative; z-index:2; }
+.addbtn { width:80px; height:80px; border-radius:22px; background:var(--surface-2); color:var(--text); border:0; font:inherit; font-weight:800; font-size:15px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
+.callnext { flex:1; height:80px; border-radius:22px; background:var(--primary); color:var(--on-primary); border:0; font:inherit; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.callnext .big { font-size:30px; line-height:34px; font-weight:900; display:flex; align-items:center; gap:6px; }
+.callnext .small { font-size:14px; line-height:18px; font-weight:700; opacity:.9; }
+.btn { width:100%; height:56px; border-radius:14px; border:0; font:inherit; font-weight:800; font-size:18px; display:flex; align-items:center; justify-content:center; gap:10px; }
+.btn.primary { background:var(--primary); color:var(--on-primary); }
+.btn.xl { height:80px; border-radius:22px; font-size:22px; }
+.btn.secondary { background:var(--surface-2); color:var(--text); }
+.btn.left { justify-content:flex-start; padding:0 16px; }
+.btn.danger-text { background:transparent; color:var(--danger); }
+.btn.serving { background:var(--serving); color:var(--on-serving); }
+.btn.upnext { background:var(--upnext); color:var(--on-upnext); }
+.btn-pair { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+
+.toast { position:absolute; left:16px; right:16px; bottom:124px; height:56px; border-radius:14px; background:var(--text); color:var(--bg); display:flex; align-items:center; justify-content:space-between; padding:0 6px 0 16px; font-weight:700; font-size:16px; z-index:3; white-space:nowrap; }
+.toast b { color:var(--primary); }
+.dark .toast b, .light .toast b { filter:none; }
+.toast .undo { height:48px; padding:0 14px; display:grid; place-items:center; font-weight:900; color:#8FB0FF; }
+.dark .toast .undo { color:#1537B8; }
+
+/* Sheet */
+.scrim { position:absolute; inset:0; background:var(--scrim); z-index:4; }
+.sheet { position:absolute; left:0; right:0; bottom:0; background:var(--bg); border-radius:22px 22px 0 0; z-index:5; padding:8px 16px 24px; box-shadow:var(--shadow); }
+.grab { width:44px; height:5px; border-radius:3px; background:var(--border); margin:4px auto 12px; }
+.sheet h3 { margin:0; font-size:22px; line-height:28px; }
+.stack { display:flex; flex-direction:column; gap:8px; }
+.msgcard { border:2px solid var(--border); border-radius:14px; padding:12px; margin:12px 0; }
+.msgcard .to { display:flex; justify-content:space-between; align-items:center; font-weight:800; }
+.msgcard .preview { background:var(--surface); border-radius:14px; padding:10px 12px; margin-top:8px; font-size:16px; line-height:22px; }
+.sendlist { font-size:16px; margin-top:12px; }
+.sendlist div { display:flex; align-items:center; gap:8px; min-height:36px; border-top:1px solid var(--surface-2); }
+.progress { display:flex; gap:4px; margin:10px 0 0; }
+.progress span { flex:1; height:6px; border-radius:3px; background:var(--surface-2); }
+.progress span.on { background:var(--primary); }
+
+.menurow { display:flex; align-items:center; gap:14px; min-height:68px; padding:8px 12px; border-radius:14px; background:var(--surface); margin-bottom:8px; }
+.menurow .ic { width:44px; height:44px; border-radius:12px; background:var(--surface-2); display:grid; place-items:center; }
+.menurow .t { font-weight:800; }
+.menurow .d { font-size:15px; line-height:20px; color:var(--text-muted); font-weight:500; }
+.menurow a { color:var(--primary); font-weight:800; }
+
+/* Forms */
+.field { margin-bottom:16px; }
+.field label, .flabel { display:block; font-size:16px; font-weight:800; margin-bottom:6px; }
+.input { height:56px; border:2px solid var(--border); border-radius:10px; padding:0 14px; display:flex; align-items:center; font-weight:600; background:var(--bg); }
+.input.ph { color:var(--text-muted); font-weight:500; }
+.help { font-size:14px; line-height:19px; color:var(--text-muted); margin-top:6px; font-weight:500; }
+.stepper { display:flex; align-items:center; gap:0; border:2px solid var(--border); border-radius:10px; overflow:hidden; width:max-content; }
+.stepper span { width:56px; height:52px; display:grid; place-items:center; font-size:26px; font-weight:800; }
+.stepper span.val { width:64px; font-size:22px; border-left:2px solid var(--border); border-right:2px solid var(--border); }
+.seg { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.seg div { border:2px solid var(--border); border-radius:14px; padding:10px 12px; font-size:14px; line-height:18px; color:var(--text-muted); min-height:92px; }
+.seg div b { display:block; color:var(--text); font-size:17px; line-height:22px; margin-bottom:4px; }
+.seg div.sel { border:3px solid var(--primary); background:var(--surface); }
+.check { display:flex; gap:12px; align-items:flex-start; font-size:15px; line-height:21px; padding:6px 0; }
+.box { width:28px; height:28px; border-radius:6px; border:2px solid var(--border); flex:none; display:grid; place-items:center; }
+.box.on { background:var(--primary); border-color:var(--primary); color:var(--on-primary); }
+.toggle { width:52px; height:32px; border-radius:16px; background:var(--primary); position:relative; flex:none; }
+.toggle::after { content:""; position:absolute; right:3px; top:3px; width:26px; height:26px; border-radius:50%; background:var(--on-primary); }
+.setrow { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:56px; border-bottom:1px solid var(--surface-2); font-weight:700; }
+
+/* Guest */
+.g-head { display:flex; justify-content:space-between; align-items:center; padding:8px 16px; font-size:15px; font-weight:700; color:var(--text-muted); flex:none; }
+.hero { border-radius:22px; padding:16px; background:var(--surface); border-left:8px solid var(--waiting); text-align:center; }
+.hero.upnext { background:var(--upnext-tint); border-left-color:var(--upnext); }
+.hero .lbl { font-size:16px; font-weight:800; color:var(--text-muted); }
+.hero .pos { font-size:112px; line-height:112px; font-weight:900; letter-spacing:-.04em; }
+.hero .pos.word { font-size:76px; line-height:96px; letter-spacing:-.02em; }
+.hero .who { font-size:16px; font-weight:700; color:var(--text-muted); }
+.hero .eta { font-size:22px; line-height:30px; font-weight:600; margin-top:6px; }
+.hero .headline { font-size:22px; line-height:28px; font-weight:900; margin-bottom:4px; }
+.nowcard { margin-top:12px; border-radius:22px; padding:12px 16px; background:var(--serving-tint); border:2px solid var(--serving); display:flex; align-items:center; gap:14px; }
+.nowcard .n { font-size:52px; line-height:56px; font-weight:900; }
+.nowcard .lbl { font-size:14px; font-weight:800; letter-spacing:.06em; }
+.nowcard .nm { font-size:20px; font-weight:800; }
+.mini { margin-top:12px; }
+.mini div { display:flex; align-items:center; gap:10px; min-height:44px; font-weight:700; font-size:17px; border-bottom:1px solid var(--surface-2); }
+.mini div.me { background:var(--upnext-tint); border-radius:10px; padding:0 8px; border-bottom:0; }
+.you { margin-left:auto; font-size:13px; font-weight:900; padding:2px 8px; border-radius:6px; background:var(--text); color:var(--bg); }
+.note { font-size:15px; line-height:21px; color:var(--text-muted); margin:14px 2px; font-weight:500; }
+.linkbtn { height:48px; display:inline-flex; align-items:center; color:var(--primary); font-weight:800; font-size:16px; }
+
+.turn { background:var(--serving); color:var(--on-serving); }
+.turn .scroll { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:12px; }
+.turn svg.cam { width:96px; height:96px; stroke-width:1.6; }
+.turn h2 { font-size:44px; line-height:48px; margin:0; font-weight:900; }
+.turn p { margin:0; font-size:22px; line-height:30px; font-weight:700; }
+
+/* QR */
+.qr { width:260px; height:260px; background:#fff; padding:14px; border-radius:14px; margin:0 auto; border:2px solid var(--border); }
+.qr svg { width:100% !important; height:100% !important; stroke:none !important; }
+.mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:20px; font-weight:800; text-align:center; margin:14px 0; }
+
+/* Lobby */
+.tv { width:960px; height:540px; border:12px solid #111; border-radius:16px; overflow:hidden; background:var(--bg); color:var(--text); display:grid; grid-template-columns:58% 42%; grid-template-rows:1fr 120px; font-variant-numeric:tabular-nums; box-shadow:0 12px 40px rgba(0,0,0,.25); max-width:100%; }
+.tv .now { background:var(--serving); color:var(--on-serving); padding:28px 36px; display:flex; flex-direction:column; justify-content:center; }
+.tv .now .lbl { font-size:28px; font-weight:900; letter-spacing:.12em; }
+.tv .now .n { font-size:180px; line-height:180px; font-weight:900; letter-spacing:-.04em; }
+.tv .now .nm { font-size:44px; font-weight:800; }
+.tv .next { padding:24px 28px; }
+.tv .next .lbl { font-size:24px; font-weight:900; letter-spacing:.12em; color:var(--text-muted); margin-bottom:8px; }
+.tv .next div.it { display:flex; align-items:center; gap:16px; font-size:30px; font-weight:800; min-height:64px; border-bottom:1px solid var(--surface-2); }
+.tv .next .tk { min-width:84px; height:48px; font-size:28px; }
+.tv .next .it.up .tk { background:var(--upnext); color:var(--on-upnext); }
+.tv .foot { grid-column:1 / 3; background:var(--surface); display:flex; align-items:center; gap:24px; padding:0 28px; font-size:26px; font-weight:800; }
+.tv .foot .q { width:96px; height:96px; background:#fff; padding:6px; border-radius:8px; }
+.tv .foot .q svg { width:100%; height:100%; }
+.tv .foot small { display:block; font-size:20px; color:var(--text-muted); font-weight:600; }
+
+.swatches { display:flex; gap:28px; flex-wrap:wrap; justify-content:center; }
+.sw { background:var(--bg); color:var(--text); padding:16px; border-radius:16px; width:360px; }
+.sw h4 { margin:0 0 10px; }
+.sw .badges { display:flex; flex-wrap:wrap; gap:8px; }
+.sw .badge { height:32px; font-size:15px; padding:0 12px; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>PBY Queue: interface mockups</h1>
+  <p>This is a visual reference for <code>DESIGN.md</code>, not production code. The phones are 360px wide. Every screen is shown in the default light theme (tuned for sunlight) unless it is labeled Dark. Sample event: “Pumpkin Patch Portraits”, 41 parties.</p>
+</div>
+
+<!-- SVG icon sprite -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14a6.5 6.5 0 0 1 3.5 6"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+    <symbol id="i-skip" viewBox="0 0 24 24"><path d="M4 16a8 8 0 0 1 14-6"/><path d="M19 4v6h-6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+    <symbol id="i-cam" viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-contact" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17a4.5 4.5 0 0 1 9 0"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v8h14v-8"/></symbol>
+    <symbol id="i-diamond" viewBox="0 0 24 24"><path d="M12 3l9 9-9 9-9-9z" fill="currentColor"/></symbol>
+    <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="1"/><path d="M8 21h8"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4v-8h16v8h-2M6 14h12v7H6z"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============ Status colors ============ -->
+<h2 class="group">Status colors (color + label + icon)</h2>
+<div class="swatches">
+  <div class="sw light"><h4>Light</h4><div class="badges">
+    <span class="badge b-waiting">○ Waiting</span><span class="badge b-upnext">◆ Up next</span><span class="badge b-serving">● Now serving</span><span class="badge b-done">✓ Done</span><span class="badge b-skipped">↷ Skipped</span><span class="badge b-noshow">✕ No-show</span></div></div>
+  <div class="sw dark"><h4>Dark</h4><div class="badges">
+    <span class="badge b-waiting">○ Waiting</span><span class="badge b-upnext">◆ Up next</span><span class="badge b-serving">● Now serving</span><span class="badge b-done">✓ Done</span><span class="badge b-skipped">↷ Skipped</span><span class="badge b-noshow">✕ No-show</span></div></div>
+</div>
+
+<!-- ============ HOST ============ -->
+<h2 class="group">Host</h2>
+<div class="row">
+
+  <!-- H3 Dashboard light -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>2:47</span><span>●●● 82%</span></div>
+      <div class="topbar"><div class="title">Pumpkin Patch Portraits</div><span class="live">Live</span>
+        <button class="iconbtn" aria-label="Share"><svg><use href="#i-qr"/></svg></button>
+        <button class="iconbtn" aria-label="More"><svg><use href="#i-more"/></svg></button></div>
+      <div class="scroll">
+        <div class="counts">36 waiting · 12 done · ~3 min each</div>
+        <div class="serving-card">
+          <div class="lbl"><span>● NOW SERVING</span><span>2:41</span></div>
+          <div class="name"><span class="tk">#14</span>Garcia Family</div>
+          <div class="meta">4 people · Maria, Leo, Ana, Sam</div>
+          <div class="card-actions">
+            <button><svg><use href="#i-check"/></svg>Done</button>
+            <button>No-show</button>
+            <button><svg><use href="#i-check"/></svg>Texted</button>
+          </div>
+        </div>
+        <div class="sec"><span class="l"><svg style="color:var(--upnext);width:18px;height:18px"><use href="#i-diamond"/></svg>Up next</span>
+          <button class="chip upnext"><svg><use href="#i-msg"/></svg>Text 1</button></div>
+        <div class="qrow upnext"><span class="tk">#15</span><div class="body"><div class="nm">Nguyen Family <span class="size"><svg><use href="#i-users"/></svg>5</span></div><div class="sub">Up next · texted 1m ago</div></div><button class="iconbtn sms"><svg><use href="#i-msg"/></svg></button></div>
+        <div class="qrow upnext"><span class="tk">#16</span><div class="body"><div class="nm">Priya &amp; Dev <span class="size"><svg><use href="#i-users"/></svg>2</span></div><div class="sub">Up next · not texted</div></div><button class="iconbtn sms pending"><svg><use href="#i-msg"/></svg></button></div>
+        <div class="sec"><span class="l">Waiting (34)</span><button class="iconbtn" aria-label="Search"><svg><use href="#i-search"/></svg></button></div>
+        <div class="qrow"><span class="tk">#17</span><div class="body"><div class="nm">Smith Family <span class="size"><svg><use href="#i-users"/></svg>4</span></div><div class="sub">Waiting · ••• 4417</div></div><button class="iconbtn sms"><svg><use href="#i-msg"/></svg></button></div>
+        <div class="qrow"><span class="tk">#18</span><div class="body"><div class="nm">Okafor <span class="size"><svg><use href="#i-users"/></svg>1</span></div><div class="sub">Waiting · no phone</div></div><button class="iconbtn sms"><svg><use href="#i-msg"/></svg></button></div>
+      </div>
+      <div class="bottombar">
+        <button class="addbtn"><svg><use href="#i-plus"/></svg>Add</button>
+        <button class="callnext"><span class="big">Call next <svg><use href="#i-next"/></svg></span><span class="small">Nguyen Family · #15</span></button>
+      </div>
+    </div>
+    <figcaption>H3 Dashboard<small>Now-serving card, Up next with “Text 1” batch chip, thumb-zone Call next</small></figcaption>
+  </figure>
+
+  <!-- H5 Send texts after Call next -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>2:48</span><span>●●● 82%</span></div>
+      <div class="topbar"><div class="title">Pumpkin Patch Portraits</div><span class="live">Live</span>
+        <button class="iconbtn"><svg><use href="#i-qr"/></svg></button><button class="iconbtn"><svg><use href="#i-more"/></svg></button></div>
+      <div class="scroll">
+        <div class="counts">35 waiting · 13 done · ~3 min each</div>
+        <div class="serving-card"><div class="lbl"><span>● NOW SERVING</span><span>0:04</span></div>
+          <div class="name"><span class="tk">#15</span>Nguyen Family</div><div class="meta">5 people</div></div>
+      </div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><h3>Send 2 texts</h3><span style="font-weight:800;color:var(--text-muted);font-size:16px">1 of 2</span></div>
+        <div class="progress"><span class="on"></span><span></span></div>
+        <div class="msgcard">
+          <div class="to"><span>Nguyen Family</span><span class="badge b-serving">● Your turn</span></div>
+          <div class="help" style="margin-top:2px">(555) 201-8830</div>
+          <div class="preview">Pumpkin Patch Portraits: Nguyen Family, it's your turn! Come to the photographer now. 📸</div>
+        </div>
+        <button class="btn primary xl"><svg><use href="#i-msg"/></svg>Text Nguyen Family</button>
+        <div class="btn-pair" style="margin-top:8px"><button class="btn secondary">Skip this one</button><button class="btn secondary">Done for now</button></div>
+        <div class="sendlist">
+          <div><span class="badge b-serving">●</span> Nguyen Family: It's your turn</div>
+          <div><span class="badge b-upnext">◆</span> Smith Family: Up next</div>
+        </div>
+      </div>
+    </div>
+    <figcaption>H5 Send texts (tap-to-send)<small>Opens after Call next. Each tap opens Messages already filled in, and the sheet moves to the next text when she comes back.</small></figcaption>
+  </figure>
+
+  <!-- H3 dark with toast -->
+  <figure>
+    <div class="phone dark">
+      <div class="statusbar"><span>7:12</span><span>●●● 41%</span></div>
+      <div class="topbar"><div class="title">Pumpkin Patch Portraits</div><span class="live">Live</span>
+        <button class="iconbtn"><svg><use href="#i-qr"/></svg></button><button class="iconbtn"><svg><use href="#i-more"/></svg></button></div>
+      <div class="scroll">
+        <div class="counts">3 waiting · 38 done · ~3 min each</div>
+        <div class="serving-card"><div class="lbl"><span>● NOW SERVING</span><span>0:02</span></div>
+          <div class="name"><span class="tk">#39</span>Johnson Twins</div><div class="meta">2 people · Ava, Mia</div>
+          <div class="card-actions"><button><svg><use href="#i-check"/></svg>Done</button><button>No-show</button><button><svg><use href="#i-msg"/></svg>Text</button></div></div>
+        <div class="sec"><span class="l"><svg style="color:var(--upnext);width:18px;height:18px"><use href="#i-diamond"/></svg>Up next</span></div>
+        <div class="qrow upnext"><span class="tk">#40</span><div class="body"><div class="nm">Rossi Family <span class="size"><svg><use href="#i-users"/></svg>6</span></div><div class="sub">Up next · texted</div></div><button class="iconbtn sms"><svg><use href="#i-msg"/></svg></button></div>
+        <div class="qrow upnext"><span class="tk">#41</span><div class="body"><div class="nm">Kim <span class="size"><svg><use href="#i-users"/></svg>3</span></div><div class="sub">Up next · texted</div></div><button class="iconbtn sms"><svg><use href="#i-msg"/></svg></button></div>
+        <div class="sec"><span class="l">Skipped &amp; no-show (2)</span></div>
+        <div class="qrow skipped"><span class="tk">#22</span><div class="body"><div class="nm">Lopez <span class="size"><svg><use href="#i-users"/></svg>3</span></div><div class="sub">↷ Skipped 12m ago</div></div><button class="chip" style="background:var(--surface-2);color:var(--text)">Re-add</button></div>
+        <div class="qrow noshow"><span class="tk">#27</span><div class="body"><div class="nm">Brown <span class="size"><svg><use href="#i-users"/></svg>2</span></div><div class="sub">✕ No-show</div></div><button class="chip" style="background:var(--surface-2);color:var(--text)">Re-add</button></div>
+      </div>
+      <div class="toast"><span>Now serving Johnson Twins</span><span class="undo">UNDO</span></div>
+      <div class="bottombar">
+        <button class="addbtn"><svg><use href="#i-plus"/></svg>Add</button>
+        <button class="callnext"><span class="big">Call next <svg><use href="#i-next"/></svg></span><span class="small">Rossi Family · #40</span></button>
+      </div>
+    </div>
+    <figcaption>H3 Dashboard (Dark), end of the event<small>Undo toast sits above Call next; skipped and no-show parties can be re-added</small></figcaption>
+  </figure>
+
+  <!-- H4 Party actions -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>2:49</span><span>●●● 81%</span></div>
+      <div class="topbar"><div class="title">Pumpkin Patch Portraits</div></div>
+      <div class="scroll"></div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div style="display:flex;align-items:center;gap:10px"><span class="tk">#17</span><h3 style="flex:1">Smith Family</h3><span class="badge b-waiting">○ Waiting</span></div>
+        <div class="help" style="font-size:16px;margin:6px 0 14px">4 people · Jen, Tom, Lily, Max<br>(555) 309-4417 · <b style="color:var(--primary)">Call</b></div>
+        <div class="stack">
+          <button class="btn primary"><svg><use href="#i-msg"/></svg>Text status link</button>
+          <button class="btn secondary left"><svg><use href="#i-cam"/></svg>Serve now</button>
+          <button class="btn secondary left"><svg><use href="#i-next"/></svg>Move to next</button>
+          <div class="btn-pair"><button class="btn secondary"><svg><use href="#i-up"/></svg>Move up</button><button class="btn secondary"><svg><use href="#i-down"/></svg>Move down</button></div>
+          <div class="btn-pair"><button class="btn secondary"><svg><use href="#i-skip"/></svg>Skip</button><button class="btn secondary"><svg><use href="#i-x"/></svg>No-show</button></div>
+          <button class="btn secondary left"><svg><use href="#i-edit"/></svg>Edit details</button>
+          <button class="btn danger-text">Remove from line</button>
+        </div>
+      </div>
+    </div>
+    <figcaption>H4 Party actions sheet<small>Opens when a row is tapped. Buttons instead of swipes; Move up/down replaces dragging.</small></figcaption>
+  </figure>
+
+  <!-- H6 Add people -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>1:02</span><span>●●● 97%</span></div>
+      <div class="topbar"><div class="title">Pumpkin Patch Portraits</div></div>
+      <div class="scroll"></div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <h3 style="margin-bottom:12px">Add people</h3>
+        <div class="menurow"><span class="ic"><svg><use href="#i-edit"/></svg></span><div><div class="t">Type it in</div><div class="d">Add one party by hand.</div></div></div>
+        <div class="menurow"><span class="ic"><svg><use href="#i-contact"/></svg></span><div><div class="t">From your contacts</div><div class="d">Pick people from your phone. (Android)</div></div></div>
+        <div class="menurow"><span class="ic"><svg><use href="#i-users"/></svg></span><div><div class="t">Contact file (.vcf)</div><div class="d">iPhone: Contacts → Share → Save to Files. <a>How?</a></div></div></div>
+        <div class="menurow"><span class="ic"><svg><use href="#i-file"/></svg></span><div><div class="t">Spreadsheet (Excel or CSV)</div><div class="d">Party name, Size, Phone, Names. <a>Download template</a></div></div></div>
+        <div class="menurow"><span class="ic"><svg><use href="#i-qr"/></svg></span><div><div class="t">Let guests join themselves</div><div class="d">Show a QR code or share a link.</div></div></div>
+      </div>
+    </div>
+    <figcaption>H6 Add people<small>“From your contacts” only appears when the Contact Picker API is available</small></figcaption>
+  </figure>
+
+  <!-- H6a Import review -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>1:04</span><span>●●● 97%</span></div>
+      <div class="topbar"><button class="iconbtn" style="width:auto;padding:0 8px;font-weight:800;color:var(--primary)">Cancel</button><div class="title" style="text-align:center">Review 48 people</div><span style="width:64px"></span></div>
+      <div class="scroll">
+        <div style="display:flex;gap:8px;margin-bottom:12px"><span class="badge b-serving" style="height:32px;font-size:15px">✓ 45 ready</span><span class="badge b-upnext" style="height:32px;font-size:15px">◆ 3 need a look</span></div>
+        <div class="flabel">From: <span style="font-weight:600">family-signups.xlsx</span></div>
+        <div class="qrow noshow"><div class="body"><div class="nm">Harris Family <span class="size"><svg><use href="#i-users"/></svg>3</span></div><div class="sub" style="color:var(--danger)">✕ Phone “555-12” is too short. Tap to fix.</div></div></div>
+        <div class="qrow upnext"><div class="body"><div class="nm">Smith Family <span class="size"><svg><use href="#i-users"/></svg>4</span></div><div class="sub">◆ Maybe the same as #17 · <b>Keep</b> / Skip</div></div></div>
+        <div class="qrow upnext"><div class="body"><div class="nm">Chen <span class="size"><svg><use href="#i-users"/></svg>1</span></div><div class="sub">◆ No phone. Can't be texted.</div></div></div>
+        <div class="qrow"><div class="body"><div class="nm">Alvarez Family <span class="size"><svg><use href="#i-users"/></svg>5</span></div><div class="sub">(555) 740-1122</div></div></div>
+        <div class="qrow"><div class="body"><div class="nm">Baker <span class="size"><svg><use href="#i-users"/></svg>2</span></div><div class="sub">(555) 882-0019</div></div></div>
+        <div class="flabel" style="margin-top:12px">Put them</div>
+        <div class="input">At the end of the line ▾</div>
+      </div>
+      <div class="bottombar"><button class="btn primary xl">Add 47 to the line</button></div>
+    </div>
+    <figcaption>H6a Import review<small>Problems are listed first; missing phone numbers are allowed</small></figcaption>
+  </figure>
+
+  <!-- H1 Create event -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>9:15</span><span>●●● 100%</span></div>
+      <div class="topbar"><div class="title">New event</div></div>
+      <div class="scroll">
+        <div class="field"><label>Event name</label><div class="input">Pumpkin Patch Portraits</div></div>
+        <div class="field"><label>Host PIN</label><div class="input" style="letter-spacing:.4em">••••</div><div class="help">Helpers type this in to run the line from another phone.</div></div>
+        <div class="field"><span class="flabel">Texting</span>
+          <div class="seg"><div class="sel"><b>Tap to send ✓</b>Your phone opens Messages with the text ready. No setup.</div><div><b>Automatic</b>Texts send by themselves. Needs a Twilio account.</div></div></div>
+        <div class="field"><span class="flabel">Text people when they're this close</span>
+          <div style="display:flex;align-items:center;gap:12px"><div class="stepper"><span>−</span><span class="val">2</span><span>+</span></div><span style="font-weight:600">spots away</span></div></div>
+        <div class="setrow">Guests can join by QR code<span class="toggle"></span></div>
+        <div class="setrow">Show names to guests<span class="toggle"></span></div>
+      </div>
+      <div class="bottombar"><button class="btn primary xl">Create event</button></div>
+    </div>
+    <figcaption>H1 Create event<small>One short form; tap-to-send is the default</small></figcaption>
+  </figure>
+
+  <!-- H7 Party editor -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>2:50</span><span>●●● 81%</span></div>
+      <div class="topbar"><button class="iconbtn" style="width:auto;padding:0 8px;font-weight:800;color:var(--primary)">Cancel</button><div class="title" style="text-align:center">Edit #17</div><button class="iconbtn" style="width:auto;padding:0 8px;font-weight:900;color:var(--primary)">Save</button></div>
+      <div class="scroll">
+        <div class="field"><label>Party name</label><div class="input">Smith Family</div></div>
+        <div class="field"><span class="flabel">How many people?</span><div class="stepper"><span>−</span><span class="val">4</span><span>+</span></div></div>
+        <div class="field"><span class="flabel">Names (optional)</span>
+          <div class="stack"><div class="input">Jen</div><div class="input">Tom</div><div class="input">Lily</div><div class="input ph">Person 4</div></div></div>
+        <div class="field"><label>Mobile number</label><div class="input">(555) 309-4417</div><div class="help">Gets the “Up next” and “Your turn” texts.</div></div>
+        <div class="check"><span class="box on"><svg style="width:18px;height:18px"><use href="#i-check"/></svg></span>They agreed to get texts</div>
+      </div>
+    </div>
+    <figcaption>H7 Party editor<small>Size stepper; names are optional</small></figcaption>
+  </figure>
+
+  <!-- H8 QR -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>1:00</span><span>●●● 98%</span></div>
+      <div class="topbar"><button class="iconbtn">←</button><div class="title">Let guests join</div></div>
+      <div class="scroll">
+        <p style="text-align:center;font-weight:800;font-size:22px;margin:8px 0 14px">Scan to join the photo line</p>
+        <div class="qr"><svg class="qrsvg" viewBox="0 0 29 29"></svg></div>
+        <div class="mono">pby.photos/j/pumpkin</div>
+        <div class="stack">
+          <div class="btn-pair"><button class="btn secondary">Copy link</button><button class="btn primary"><svg><use href="#i-share"/></svg>Share</button></div>
+          <button class="btn secondary left"><svg><use href="#i-print"/></svg>Print a sign</button>
+          <button class="btn secondary left"><svg><use href="#i-tv"/></svg>Open lobby display</button>
+        </div>
+        <div class="setrow" style="margin-top:8px">Accept new guests<span class="toggle"></span></div>
+      </div>
+    </div>
+    <figcaption>H8 Share / QR<small>Screen stays on so guests can scan straight from the phone</small></figcaption>
+  </figure>
+
+  <!-- H9 Settings -->
+  <figure>
+    <div class="phone dark">
+      <div class="statusbar"><span>3:30</span><span>●●● 60%</span></div>
+      <div class="topbar"><button class="iconbtn">←</button><div class="title">Settings</div></div>
+      <div class="scroll">
+        <div class="flabel" style="color:var(--text-muted);margin-top:4px">QUEUE</div>
+        <div class="setrow">Text when this close<div class="stepper"><span style="width:44px;height:40px">−</span><span class="val" style="height:40px;width:44px;font-size:18px">2</span><span style="width:44px;height:40px">+</span></div></div>
+        <div class="setrow">Pause line<span class="toggle" style="background:var(--surface-2)"></span></div>
+        <div class="flabel" style="color:var(--text-muted);margin-top:16px">TEXTING</div>
+        <div class="setrow">Mode<span style="color:var(--primary)">Tap to send ›</span></div>
+        <div class="setrow">Ask to text after Call next<span class="toggle"></span></div>
+        <div class="setrow">Message wording<span style="color:var(--primary)">Edit ›</span></div>
+        <div class="flabel" style="color:var(--text-muted);margin-top:16px">DISPLAY</div>
+        <div class="setrow">Theme<span style="color:var(--primary)">Light ›</span></div>
+        <div class="setrow">Max contrast (bright sun)<span class="toggle" style="background:var(--surface-2)"></span></div>
+        <div class="setrow">Text size<span style="color:var(--primary)">Large ›</span></div>
+        <div class="setrow" style="color:var(--danger);border:0">End event</div>
+      </div>
+    </div>
+    <figcaption>H9 Settings (Dark)<small>Theme defaults to Light even when the phone is set to dark</small></figcaption>
+  </figure>
+</div>
+
+<!-- ============ GUEST ============ -->
+<h2 class="group">Guest</h2>
+<div class="row">
+
+  <!-- G1 Join -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>2:30</span><span>●●● 64%</span></div>
+      <div class="scroll" style="padding-top:12px">
+        <div style="font-size:15px;font-weight:700;color:var(--text-muted)">Pumpkin Patch Portraits</div>
+        <div style="font-size:30px;line-height:36px;font-weight:900;margin:2px 0 6px">Join the photo line</div>
+        <div class="badge b-waiting" style="height:30px;font-size:15px;margin-bottom:16px">18 groups ahead · about 45–55 min</div>
+        <div class="field"><label>Your name or family name</label><div class="input ph">e.g., Smith Family</div></div>
+        <div class="field"><span class="flabel">How many people in the photo?</span><div class="stepper"><span>−</span><span class="val">1</span><span>+</span></div></div>
+        <div class="field"><label>Mobile number</label><div class="input ph">(555) 555-5555</div><div class="help">We'll text you when you're almost up.</div></div>
+        <div class="check"><span class="box"></span><span>Text me updates about my place in line. Msg &amp; data rates may apply. Reply STOP to opt out.</span></div>
+      </div>
+      <div class="bottombar"><button class="btn primary xl">Join the line</button></div>
+    </div>
+    <figcaption>G1 Join (from QR)<small>Three fields and a consent box; shows how long the line is before joining</small></figcaption>
+  </figure>
+
+  <!-- G2 Status waiting -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>2:52</span><span>●●● 61%</span></div>
+      <div class="g-head"><span>Pumpkin Patch Portraits</span><span class="live">Live</span></div>
+      <div class="scroll">
+        <div class="hero">
+          <div class="lbl">Your place in line</div>
+          <div class="pos">3</div>
+          <div class="who">Ticket #17 · Smith Family · 4 people</div>
+          <div class="eta">About <b>5–10 min</b></div>
+        </div>
+        <div class="nowcard"><span class="n">#15</span><div><div class="lbl">NOW TAKING PHOTOS</div><div class="nm">Nguyen Family</div></div></div>
+        <div class="mini">
+          <div><span class="tk">#16</span>Priya &amp; Dev</div>
+          <div class="me"><span class="tk">#17</span>Smith Family<span class="you">YOU</span></div>
+          <div><span class="tk">#18</span>Okafor</div>
+        </div>
+        <p class="note">Stay nearby. We'll text you when you're 2 away and again when it's your turn.</p>
+        <div style="display:flex;justify-content:space-between"><span class="linkbtn">Change party size</span><span class="linkbtn" style="color:var(--danger)">Leave the line</span></div>
+      </div>
+    </div>
+    <figcaption>G2 My status: waiting<small>Answers three questions: where am I, who is up now, how long</small></figcaption>
+  </figure>
+
+  <!-- G2 Up next dark -->
+  <figure>
+    <div class="phone dark">
+      <div class="statusbar"><span>2:58</span><span>●●● 58%</span></div>
+      <div class="g-head"><span>Pumpkin Patch Portraits</span><span class="live">Live</span></div>
+      <div class="scroll">
+        <div class="hero upnext">
+          <div class="headline">◆ You're up next!</div>
+          <div class="lbl">Head to the photo area now</div>
+          <div class="pos word">Next</div>
+          <div class="who">Ticket #17 · Smith Family · 4 people</div>
+          <div class="eta">Any minute now</div>
+        </div>
+        <div class="nowcard"><span class="n">#16</span><div><div class="lbl">NOW TAKING PHOTOS</div><div class="nm">Priya &amp; Dev</div></div></div>
+        <div class="mini">
+          <div class="me"><span class="tk">#17</span>Smith Family<span class="you">YOU</span></div>
+          <div><span class="tk">#18</span>Okafor</div>
+          <div><span class="tk">#19</span>Walsh Family</div>
+        </div>
+        <p class="note">This page updates by itself. Keep it open.</p>
+      </div>
+    </div>
+    <figcaption>G2 My status: Up next (Dark)<small>Amber hero; the tab title changes to “⚡ You're up next”</small></figcaption>
+  </figure>
+
+  <!-- G3 Your turn -->
+  <figure>
+    <div class="phone light turn">
+      <div class="statusbar"><span>3:01</span><span>●●● 57%</span></div>
+      <div class="scroll">
+        <svg class="cam"><use href="#i-cam"/></svg>
+        <h2>It's your turn!</h2>
+        <p>Come to the photographer now</p>
+        <p style="font-size:18px;opacity:.95">Ticket #17 · Smith Family</p>
+      </div>
+    </div>
+    <figcaption>G3 It's your turn<small>Whole screen turns green, the phone vibrates twice, and screen readers announce it (role="alert")</small></figcaption>
+  </figure>
+
+  <!-- G4 skipped -->
+  <figure>
+    <div class="phone light">
+      <div class="statusbar"><span>3:09</span><span>●●● 55%</span></div>
+      <div class="g-head"><span>Pumpkin Patch Portraits</span><span class="live">Live</span></div>
+      <div class="scroll">
+        <div class="hero" style="background:var(--skipped-tint);border-left-color:var(--skipped)">
+          <span class="badge b-skipped" style="height:30px;font-size:15px">↷ Skipped</span>
+          <div class="pos word" style="font-size:56px;line-height:72px">On hold</div>
+          <div class="headline" style="font-size:20px">We missed you!</div>
+          <div class="who" style="font-size:17px;line-height:24px">Find the photographer and they'll fit you back in.</div>
+        </div>
+        <div class="nowcard"><span class="n">#19</span><div><div class="lbl">NOW TAKING PHOTOS</div><div class="nm">Walsh Family</div></div></div>
+        <div style="margin-top:16px;border-radius:14px;background:var(--upnext-tint);border-left:6px solid var(--upnext);padding:12px;font-size:16px;font-weight:700">⟳ Reconnecting… last updated 1 min ago</div>
+      </div>
+    </div>
+    <figcaption>G4 Skipped + reconnecting banner<small>Terminal and error states use a calm tone and give one clear next step</small></figcaption>
+  </figure>
+</div>
+
+<!-- ============ LOBBY ============ -->
+<h2 class="group">Lobby display (optional, TV or tablet, always dark)</h2>
+<div class="row">
+  <figure>
+    <div class="tv dark">
+      <div class="now"><div class="lbl">● NOW SERVING</div><div class="n">#15</div><div class="nm">Nguyen Family</div></div>
+      <div class="next"><div class="lbl">UP NEXT</div>
+        <div class="it up"><span class="tk">#16</span>Priya &amp; Dev</div>
+        <div class="it up"><span class="tk">#17</span>Smith Family</div>
+        <div class="it"><span class="tk">#18</span>Okafor</div>
+        <div class="it"><span class="tk">#19</span>Walsh Family</div>
+        <div class="it"><span class="tk">#20</span>Martinez</div>
+      </div>
+      <div class="foot"><div class="q"><svg class="qrsvg" viewBox="0 0 29 29"></svg></div>
+        <div>Scan to join the line<small>pby.photos/j/pumpkin · about 3 min per group</small></div></div>
+    </div>
+    <figcaption>L1 Lobby display<small>Read-only; flashes green when a new party is called</small></figcaption>
+  </figure>
+</div>
+
+<script>
+// Draws a decorative QR-like pattern. It is not a real QR code.
+(function () {
+  var n = 29, seed = 7, out = '';
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  function finder(x, y) {
+    return '<rect x="'+x+'" y="'+y+'" width="7" height="7" fill="#000"/>' +
+           '<rect x="'+(x+1)+'" y="'+(y+1)+'" width="5" height="5" fill="#fff"/>' +
+           '<rect x="'+(x+2)+'" y="'+(y+2)+'" width="3" height="3" fill="#000"/>';
+  }
+  function inFinder(x, y) { return (x < 8 && y < 8) || (x > n-9 && y < 8) || (x < 8 && y > n-9); }
+  for (var y = 0; y < n; y++) for (var x = 0; x < n; x++)
+    if (!inFinder(x, y) && rnd() > 0.52) out += '<rect x="'+x+'" y="'+y+'" width="1" height="1" fill="#000"/>';
+  out += finder(0,0) + finder(n-7,0) + finder(0,n-7);
+  document.querySelectorAll('.qrsvg').forEach(function (s) { s.innerHTML = out; });
+})();
+</script>
+</body>
+</html>
