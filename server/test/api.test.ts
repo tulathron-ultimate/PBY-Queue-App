@@ -704,3 +704,121 @@ describe('QA regressions', () => {
     expect(one.at(-1)).toBe(429);
   });
 });
+
+describe('robustness', () => {
+  it('calls exactly one party when two helper devices press Call next together', async () => {
+    const h = await setup();
+    await addManual(h, 'Garcia Family');
+    await addManual(h, 'Nguyen Family');
+    const login = await h.app.inject({
+      method: 'POST',
+      url: '/api/host/login',
+      payload: { eventId: h.eventId, pin: PIN },
+    });
+    const helper = Object.fromEntries(login.cookies.map((c) => [c.name, c.value]));
+    advance(5000);
+    const [a, b] = await Promise.all([
+      host(h, 'POST', '/call-next'),
+      h.app.inject({
+        method: 'POST',
+        url: `/api/host/events/${h.eventId}/call-next`,
+        cookies: helper,
+        payload: {},
+      }),
+    ]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 429]);
+    const s = await snap(h);
+    expect(s.parties.filter((p) => p.state === 'now_serving').map((p) => p.ticket)).toEqual([1]);
+    expect(s.parties.filter((p) => p.state === 'done')).toHaveLength(0);
+  });
+
+  it('survives a server restart mid-event: sessions, queue, undo and guest links', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pby-qa-'));
+    const env = { DATABASE_PATH: join(dir, 'q.db') };
+    const h = await setup(env);
+    await addManual(h, 'Garcia Family', '555-201-8830');
+    await addManual(h, 'Nguyen Family', '555-309-4417');
+    advance(5000);
+    await host(h, 'POST', '/call-next');
+    const before = await snap(h);
+    const guest = before.parties[1].token;
+    await h.app.close();
+    apps.splice(apps.indexOf(h.app), 1);
+
+    const cfg = loadConfig({ ...env, ADMIN_PASSWORD: ADMIN, LOG_LEVEL: 'silent' });
+    cfg.webDist = null;
+    const { app } = await buildApp(cfg, { now, timers: false });
+    apps.push(app);
+    const h2 = { ...h, app };
+    const after = await snap(h2);
+    expect(after.parties.map((p) => [p.ticket, p.state])).toEqual(
+      before.parties.map((p) => [p.ticket, p.state]),
+    );
+    expect(after.pendingTexts.length).toBe(before.pendingTexts.length);
+    const status = await app.inject({ method: 'GET', url: `/api/status/${guest}` });
+    expect(status.json().me.position).toBe(1);
+    // Undo still works after the restart, and the debounce survives too.
+    expect((await host(h2, 'POST', '/undo')).json().undone).toBe('Call next');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('handles a 300-party line from import to empty', async () => {
+    const h = await setup();
+    const rows = Array.from({ length: 300 }, (_, i) => ({
+      name: `Family ${i + 1}`,
+      phone: `555${String(2000000 + i).padStart(7, '0')}`,
+      size: 1 + (i % 6),
+    }));
+    const started = performance.now();
+    const res = await host(h, 'POST', '/import', { rows, arrived: true, consentConfirmed: true });
+    expect(res.json().added).toBe(300);
+    const last = (await snap(h)).parties.at(-1)!;
+    const status = (await h.app.inject({ method: 'GET', url: `/api/status/${last.token}` })).json();
+    expect(status.me).toMatchObject({ ticket: 300, position: 300, waitText: '90+ min' });
+    expect(JSON.stringify(status)).not.toContain('555');
+    for (let i = 0; i < 300; i++) {
+      advance(60_000);
+      expect((await host(h, 'POST', '/call-next')).statusCode).toBe(200);
+    }
+    const s = await snap(h);
+    expect(s.parties.filter((p) => p.state === 'done')).toHaveLength(299);
+    advance(60_000);
+    expect((await host(h, 'POST', '/call-next')).json().error).toBe('queue_empty');
+    expect(performance.now() - started).toBeLessThan(20_000);
+  });
+
+  it('bounds party size and handles duplicate, foreign and garbage phones', async () => {
+    const h = await setup({
+      TWILIO_ACCOUNT_SID: 'AC123',
+      TWILIO_AUTH_TOKEN: 'secret-token',
+      TWILIO_FROM: '+15550001111',
+    });
+    for (const size of [0, -1, 21, 1e9, 2.5, 'lots']) {
+      const res = await host(h, 'POST', '/parties', { name: 'X', size });
+      expect(res.json().error, String(size)).toBe('bad_size');
+    }
+    const join = (payload: object) =>
+      h.app.inject({ method: 'POST', url: `/api/join/${h.code}`, payload });
+    // Self-join clamps the size stepper's value instead of failing.
+    const big = await join({ name: 'Big Group', size: 500 });
+    const bigSnap = await h.app.inject({ method: 'GET', url: `/api/status/${big.json().token}` });
+    expect(bigSnap.json().me.size).toBe(20);
+    // Twilio only texts US numbers (§2.9), so a foreign number can't self-join for texts.
+    expect(
+      (await join({ name: 'Anna', phone: '+44 7911 123456', consent: true })).json().error,
+    ).toBe('us_only');
+    expect((await join({ name: 'Anna', phone: 'call me', consent: true })).json().error).toBe(
+      'invalid_phone',
+    );
+    // The host can still add them; they are kept but never texted.
+    const foreign = await addManual(h, 'Anna Schmidt', '+44 7911 123456');
+    const garbage = await addManual(h, 'Bob Jones', 'ask at desk');
+    const dupA = await addManual(h, 'Kid One', '555-201-8830');
+    const dupB = await addManual(h, 'Kid Two', '(555) 201-8830');
+    const s = await snap(h);
+    const by = (id: string) => s.parties.find((p) => p.id === id)!;
+    expect(by(foreign)).toMatchObject({ phone: '+447911123456', canText: false });
+    expect(by(garbage)).toMatchObject({ phone: null, phoneInvalidInput: 'ask at desk' });
+    expect([by(dupA).phone, by(dupB).phone]).toEqual(['+15552018830', '+15552018830']);
+  });
+});
