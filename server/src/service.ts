@@ -828,11 +828,15 @@ export class QueueService {
     return reached;
   }
 
-  /** A5 self-join. One active party per phone: a duplicate returns the existing link. */
+  /**
+   * A5 self-join. One active party per phone. A duplicate only learns "you're already in line"
+   * (SEC-10, owner decision): handing back that party's status link would let anyone with the
+   * public QR code and a family's phone number open the family's page.
+   */
   selfJoin(
     code: string,
     input: { name?: unknown; phone?: unknown; size?: unknown; consent?: unknown },
-  ): { token: string; existing: boolean } {
+  ): { token: string; existing: false } | { existing: true } {
     const event = this.store.getEventByCode(code);
     if (!event || event.purgedAt) throw new ServiceError(404, 'not_found', 'Event not found.');
     if (event.status !== 'open' || !event.selfJoin) {
@@ -858,7 +862,7 @@ export class QueueService {
             p.phone === v.phone &&
             (p.state === 'waiting' || p.state === 'up_next' || p.state === 'now_serving'),
         );
-      if (existing) return { token: existing.token, existing: true };
+      if (existing) return { existing: true };
     }
     const [party] = this.addParties(event.id, [v], {
       source: 'self',

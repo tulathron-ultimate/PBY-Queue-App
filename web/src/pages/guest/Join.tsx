@@ -17,6 +17,8 @@ export function Join({ code }: { code: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  // SEC-10: a phone number already in line only gets "you're already in line", never its link.
+  const [alreadyInLine, setAlreadyInLine] = useState(false);
   const saved = storageGet(`pby.join.${code}`);
   const [existing, setExisting] = useState<{ token: string; name: string } | null>(() => {
     try {
@@ -47,11 +49,17 @@ export function Join({ code }: { code: string }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ token: string; existing: boolean }>(`/api/join/${code}`, {
-        body: { name, size, phone, consent, website },
-      });
+      const r = await api<{ token: string; existing: false } | { existing: true }>(
+        `/api/join/${code}`,
+        { body: { name, size, phone, consent, website } },
+      );
+      if (r.existing) {
+        setAlreadyInLine(true);
+        setBusy(false);
+        return;
+      }
       storageSet(`pby.join.${code}`, JSON.stringify({ token: r.token, name: name.trim() }));
-      navigate(`/s/${r.token}?joined=${r.existing ? 'again' : '1'}`, { replace: true });
+      navigate(`/s/${r.token}?joined=1`, { replace: true });
     } catch (err) {
       setError(
         err instanceof ApiError && err.code === 'closed'
@@ -112,6 +120,23 @@ export function Join({ code }: { code: string }) {
             {info.open
               ? "The line isn't taking new people right now. Please talk to the photographer."
               : 'This photo line has ended. Thanks for coming!'}
+          </div>
+        ) : alreadyInLine ? (
+          <div className="banner ok" role="status">
+            You're already in line with this number. Use the link we texted you, or ask the
+            photographer.
+            <div>
+              <button
+                type="button"
+                className="linkbtn"
+                onClick={() => {
+                  setAlreadyInLine(false);
+                  setPhone('');
+                }}
+              >
+                Add someone else
+              </button>
+            </div>
           </div>
         ) : existing ? (
           <div className="banner ok" role="status">
@@ -205,7 +230,7 @@ export function Join({ code }: { code: string }) {
           </>
         )}
       </div>
-      {!closed && !existing && (
+      {!closed && !existing && !alreadyInLine && (
         <div className="bottombar guest">
           <div className="inner">
             <button className="btn primary xl" disabled={busy}>

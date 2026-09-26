@@ -218,11 +218,6 @@ export function Status({ token }: { token: string }) {
             You're in! Bookmark this page{me.hasPhone ? ' or watch for our text' : ''}.
           </div>
         )}
-        {joined === 'again' && me && (
-          <div className="banner" role="status">
-            You were already in line with this number, so here is your spot.
-          </div>
-        )}
         {live.state !== 'live' && live.state !== 'connecting' && !snap.eventEnded && (
           <div className="banner" role="status">
             ⟳ Reconnecting…
