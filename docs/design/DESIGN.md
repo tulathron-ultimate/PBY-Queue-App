@@ -129,7 +129,7 @@ Short, warm, literal. Use the party name the guest typed ("Smith Family") and ti
 - **Position**: live count of parties ahead of you + 1 among active (`waiting`, `up_next`) parties. "You're #3 in line" uses position, not ticket number. To avoid confusion, the UI always writes ticket numbers as "Ticket #14" or "#14" in a badge, and position as a big plain number with "in line" beneath.
 - **Ahead of you**: the number of checked-in parties ahead in line (`position − 1`), e.g. "3 ahead of you". (A wait-time estimate was designed here originally; the owner removed it, so no screen predicts a time.)
 - **Up-next threshold N** (default 2): the first N active parties are `up_next` and get the Up-next text.
-- **Pause**: host can pause the line. Guests see a paused banner.
+- **Pause**: host can pause the line, with an optional short message ("Back in 10 minutes — lunch break"). Call next is off, nobody gets an Up next text, and guest pages and the lobby display show a paused banner with the message. Everyone keeps their place. Built in v1.1; see "Paused state" below and FEATURES §2.13.
 - **Privacy setting**: "Show names to guests" (default on). When off, guest page and lobby show ticket numbers only.
 
 ---
@@ -179,8 +179,8 @@ HOST
    │        ├─ Contact file (.vcf) ─► H6a
    │        ├─ Spreadsheet (.xlsx/.csv) ─► H6a   (+ "Download template")
    │        └─ Let guests join ─► H8
-   ├─ [Share] ──► H8 QR / link  ──(Open lobby display)─► L1
-   └─ [⋯] ──► Pause line · Settings (H9) · Show done & removed · Lobby display · End event
+   ├─ [Share] ──► H8 QR / link  ──(Make a TV link · Open on TV)─► L1
+   └─ [⋯] ──► Settings (H9) · Let guests join · Show done & removed · Pause line / Resume line · Texts to send · All events
 
 GUEST
  QR / link ──► G1 Join ──(Join)──► G2 My status (URL is their private link; also texted)
@@ -190,10 +190,10 @@ GUEST
  G2 [Leave the line] ──(confirm)──► G4 "You left the line" (with [Rejoin])
 
 LOBBY
- H8 or /e/{slug}/display ──► L1 (read-only, no PIN, auto-refresh via WebSocket)
+ H8 "Open on TV" (copies the link) ──► /d/{lobbyToken} ──► L1 (read-only, no PIN, live via WebSocket)
 ```
 
-URL scheme (for reference): `/host`, `/host/new`, `/host/e/{eventId}`, `/j/{eventSlug}` (join), `/s/{partyToken}` (guest status), `/d/{eventSlug}` (display).
+URL scheme (for reference): `/host`, `/host/new`, `/host/e/{eventId}`, `/j/{joinCode}` (join), `/s/{partyToken}` (guest status), `/d/{lobbyToken}` (lobby display). The display uses its own unguessable, revocable token, never the public join code, so knowing the QR code does not open the board.
 
 ---
 
@@ -243,7 +243,7 @@ Layout, top to bottom (390px wide phone):
    - Left: **+ Add** square button (80×80, surface-2, icon + "Add").
    - Right: **Call next** (80px tall, flexible width, `--primary`, fs-2xl weight 800, "Call next ▸"). Sub-label inside the button: "Garcia Family · #15" so she knows who is coming without reading the list.
    - When nobody can be called: button disabled with label "Line is empty" (no one waiting) or "Nobody checked in" (everyone waiting is not here yet). Same wording as FEATURES §2.5.
-   - When paused: button reads "Resume line".
+   - When paused: the button is disabled and reads "⏸ Line paused / Resume to call the next party". A **paused strip** sits above the bar (amber tint + bar, pause icon, "Line paused." and the message in quotes, two lines max) with a **Resume** button (56px, primary) on the right, in the thumb zone. The list reserves the strip's height so nothing hides behind it.
 
 **Queue row (64px)**: left 6px status bar · ticket badge (`#15`, 44px wide, tabular) · name (fs-base 700) with size chip "👥 4" rendered as a users icon + number · second line: status label + "texted 2m ago" or phone last-4 · right: **message icon button** (48×48; filled dot when not yet texted for current status) · whole row tappable → H4.
 
@@ -254,6 +254,8 @@ Layout, top to bottom (390px wide phone):
 2. First `up_next` → `now_serving`; next party in waiting promotes to `up_next`.
 3. Haptic pulse; Now-serving card animates in; toast "Now serving Garcia Family · Undo".
 4. Texting: in Twilio mode, texts send automatically ("Your turn" to the new now-serving party, "Up next" to newly promoted). In tap-to-send mode, the **Send texts sheet (H5)** opens automatically (can be turned off in Settings → "Ask to text after Call next").
+
+**Paused state** (v1.1): the Live pill is replaced by an amber "⏸ Paused" pill (the connection pill still shows when not live); the paused strip and disabled Call next above. **⋯ → Pause line** opens a sheet: "Message for guests (optional)" (120 characters max, placeholder "Back in 10 minutes — lunch break"), a toggle **Text everyone waiting** (off by default; its helper line says how many texts and whether they go to the tray or send automatically), and **Pause line** / Cancel. Pause and Resume show an Undo toast. Up next rows show "not texted" while their texts are held.
 
 **States**:
 - Loading: skeleton card + 6 skeleton rows; Call next disabled.
@@ -321,7 +323,7 @@ Full-screen sheet with Cancel / **Save** (top) and sticky bottom **Save** (56px)
 - Large QR (min 280px, black on white even in dark mode, quiet zone included) encoding `/j/{slug}`.
 - Short link in large monospace text + **Copy** + **Share** (Web Share API).
 - **Print sign** (A4/Letter page: event name, "Scan to join the photo line", QR, short link).
-- **Open lobby display** (opens L1 in new tab; tip "Cast or open this on a TV or tablet").
+- **Lobby display (TV)** section (v1.1): one line on what it shows and that anyone with the link can watch it. With no link: **Make a TV link** (secondary, TV icon). With a link: the short link in monospace, then **Open on TV** (primary; copies the link, turns into "Link copied ✓" with the hint "Paste it into the TV's or tablet's browser") beside **Open here** (new tab), and a danger text button **Turn off TV link** with an inline Turn off / Keep it confirm.
 - Toggle "Accept new guests" (off → join page says "The line is closed").
 - Screen stays awake (Wake Lock API) while open so guests can scan the host's phone.
 
@@ -332,7 +334,7 @@ Grouped list, each row 56px:
 - **Texting**: mode (Tap to send / Twilio) with Twilio credentials + Send test text; "Ask to text after Call next" toggle; "Confirm before texting" toggle; message templates.
 - **Display**: Theme (Light / Dark / Auto), Max contrast toggle, Text size (Normal / Large / Extra large, scales all tokens by 1 / 1.15 / 1.3), Keep screen awake toggle.
 - **Helpers**: "Helpers on this event: 1" with device list + Sign out others.
-- **Data**: Export CSV (history with times), Clear done parties.
+- **Data** (v1.1): **Download results (CSV)** (secondary, download icon; "Preparing…" while it runs), shown while open and after the event ends, then a note in bold: "Guest data is deleted N days after the event ends. Download it before then." (after close: "…deleted on Fri, Oct 9, N days after the event ended."). N is `RETENTION_DAYS`.
 
 ---
 
@@ -371,7 +373,7 @@ Top to bottom:
 
 **States**:
 - Loading: skeleton hero with pulsing number placeholder.
-- Paused: amber banner "The photographer is taking a short break." Position still shown.
+- Paused (v1.1): amber banner above the hero: pause icon + **"The line is paused."** "The photographer is taking a short break. Everyone keeps their place." and the host's message on its own line (fs-base, weight 800). Position, ahead count and Now serving still show. In the Up next state the sub-line becomes "Stay nearby: you go next when the line resumes". Not shown for done or removed parties. The message is rendered as text only.
 - Reconnecting / offline: top banner "Reconnecting… last updated 1 min ago"; number greyed with that timestamp. Falls back to polling every 20s.
 - Link invalid: "We can't find this spot in line. Check the link in your text, or ask the photographer."
 
@@ -403,12 +405,17 @@ Tap-to-send uses the same templates; the SMS adapter builds `sms:` links (`sms:N
 
 ---
 
-## 8. L1 Lobby display (optional)
-Landscape, 16:9, dark theme forced (better on TVs), no interaction.
-- Left 60%: "NOW SERVING" + ticket `#14` in 220px type + name.
-- Right 40%: "UP NEXT" list of the next 4–5 tickets with names; the first N in amber.
-- Bottom bar: QR code (160px) "Scan to join the line" + short link.
-- New now-serving triggers a 1s green flash and optional chime. Reconnecting indicator small in corner.
+## 8. L1 Lobby display (built in v1.1)
+Landscape, 16:9, dark theme forced (better on TVs), no interaction. Opened from `/d/{lobbyToken}` (H8). Everything is sized from one unit, `--u: min(1vw, 1.7778vh)`, so the board letterboxes to 16:9 on any screen.
+- **Header**: event name in the display font (4u), Live pill on the right (it turns "Reconnecting…" / "Offline" on socket loss).
+- **Paused banner** (when paused): full-width amber solid, pause icon, "Paused for a short break. Everyone keeps their place." and the message on a second line (2.8u, weight 900). The Now serving panel dims slightly and the Up next list shows 4 instead of 5.
+- **Left 58%**: `now_serving` solid panel: "● NOW SERVING" eyebrow, ticket `#14` at 14u (about 180px at 720p, 270px at 1080p), weight 900, then the G2 name ("Emma R.") at 4.6u, or the ticket only when names are hidden. With nobody called: "Starting soon" in the display font.
+- **Right 42%**: "UP NEXT" eyebrow and the next 5 checked-in tickets with names; the first ticket badge in amber (next to be called).
+- **Bottom bar** (surface): join QR code (9u, white quiet zone) + "Scan to join the photo line" + the short link in monospace; hidden when self-join is off ("Watch for your ticket number"). A small **Full screen** button on the right, hidden once full screen.
+- New now-serving triggers a 1 s flash. The screen stays awake (Wake Lock). Reconnects on its own, with polling as a fallback.
+- Held upright (portrait tablet): panels stack (header, banner, Now serving, Up next, footer).
+- Other states: **ended** "This photo line has ended. Thanks for coming!"; **link turned off** "This display link was turned off. Open the new link from the photographer's Share screen."
+- Privacy: the payload carries only tickets, G2 names, the event name, pause state/message and the join link (FEATURES §2.14).
 
 ---
 

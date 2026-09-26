@@ -1,5 +1,6 @@
 /** Builds the payloads sent to host and guest pages. Guest payloads are privacy-filtered. */
 import {
+  DEFAULTS,
   findNowServing,
   orderActive,
   positionOf,
@@ -13,10 +14,13 @@ import {
   type HostPartyText,
   type HostSnapshot,
   type JoinInfo,
+  type LobbyPartyRef,
+  type LobbySnapshot,
   type PendingText,
   type TemplateKey,
   LIMITS,
 } from '@pby/shared';
+import { lobbyUrl } from './lobby.js';
 import type { EventRecord, PartyRecord, SmsLogRecord } from './store.js';
 
 export function statusLink(event: EventRecord, party: PartyRecord): string {
@@ -54,6 +58,10 @@ export function hostEventInfo(event: EventRecord): HostEventInfo {
     hostConsent: event.hostConsent,
     createdAt: event.createdAt,
     closedAt: event.closedAt,
+    paused: event.paused,
+    pauseMessage: event.pauseMessage,
+    pausedAt: event.pausedAt,
+    lobbyUrl: event.lobbyToken ? lobbyUrl(event.publicUrl, event.lobbyToken) : null,
   };
 }
 
@@ -63,6 +71,7 @@ export interface HostSnapshotInput {
   sms: SmsLogRecord[];
   undo: { label: string; at: number } | null;
   twilioAvailable: boolean;
+  retentionDays: number;
   isOptedOut: (phone: string) => boolean;
   canText: (party: PartyRecord) => boolean;
   now: number;
@@ -104,6 +113,8 @@ export function buildHostSnapshot(input: HostSnapshotInput): HostSnapshot {
   const pendingTexts: PendingText[] = [];
   for (const s of sms) {
     if (s.status !== 'pending' || s.provider !== 'tap') continue;
+    // E6: no Up next texts while paused. Ones queued before the pause wait here until Resume.
+    if (event.paused && s.template === 'up_next') continue;
     const party = byId.get(s.partyId);
     // Turned to "No texts", opted out or lost consent since it was queued: never offer it.
     if (!party?.phone || !input.canText(party)) continue;
@@ -121,6 +132,7 @@ export function buildHostSnapshot(input: HostSnapshotInput): HostSnapshot {
     pendingTexts,
     undo: input.undo,
     twilioAvailable: input.twilioAvailable,
+    retentionDays: input.retentionDays,
     serverTime: input.now,
   };
 }
@@ -142,6 +154,8 @@ export function buildGuestSnapshot(
     upNextN: event.upNextN,
     selfJoin: event.selfJoin && !ended,
     joinCode: event.code,
+    paused: event.paused && !ended,
+    pauseMessage: event.paused && !ended ? event.pauseMessage : null,
     serverTime: now,
   };
   if (ended) return { ...base, me: null, nowServing: null, comingUp: [] };
@@ -164,6 +178,39 @@ export function buildGuestSnapshot(
     },
     nowServing: serving ? ref(event, serving, party.id) : null,
     comingUp,
+  };
+}
+
+function lobbyRef(event: EventRecord, p: PartyRecord): LobbyPartyRef {
+  return { ticket: p.ticket, name: publicName(p.name, event.showNames) };
+}
+
+/**
+ * G5 lobby display payload, built field by field from an allowlist: the event name, the pause
+ * state and message, tickets with privacy-filtered names (G2), and the public join link. It
+ * never carries phone numbers, party ids, status tokens, notes, members or party sizes.
+ */
+export function buildLobbySnapshot(
+  event: EventRecord,
+  parties: readonly PartyRecord[],
+): LobbySnapshot {
+  const ended = event.status === 'closed';
+  const serving = ended ? undefined : findNowServing(parties);
+  const joinOpen = event.selfJoin && !ended;
+  return {
+    eventName: event.name,
+    eventEnded: ended,
+    paused: event.paused && !ended,
+    pauseMessage: event.paused && !ended ? event.pauseMessage : null,
+    nowServing: serving ? lobbyRef(event, serving) : null,
+    comingUp: ended
+      ? []
+      : orderActive(parties)
+          .filter((p) => p.arrived)
+          .slice(0, DEFAULTS.lobbyComingUp)
+          .map((p) => lobbyRef(event, p)),
+    joinUrl: joinOpen ? joinLink(event) : null,
+    joinQrUrl: joinOpen ? `/api/join/${event.code}/qr.svg` : null,
   };
 }
 

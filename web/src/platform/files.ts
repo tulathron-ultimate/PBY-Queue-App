@@ -16,5 +16,22 @@ export function downloadBlob(filename: string, blob: Blob): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // iOS Safari asks before saving, and the blob URL must still work when the host taps.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * Downloads a file from our own API with the session cookie, keeping the server's file name.
+ * Fetch + blob works the same on iPhone Safari (iOS 13+, including the installed app) and
+ * Android Chrome, and a failed request (signed out, event deleted) becomes an error, not a
+ * saved error page.
+ */
+export async function downloadFromApi(url: string, fallbackName: string): Promise<void> {
+  const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new Error(data.message ?? "Couldn't download the file.");
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1];
+  downloadBlob(name ?? fallbackName, await res.blob());
 }

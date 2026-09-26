@@ -5,6 +5,7 @@ import {
   type HostSnapshot,
   type PendingText,
 } from '@pby/shared';
+import { readFileSync } from 'node:fs';
 import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
 import {
@@ -161,9 +162,23 @@ describe('QA nits', () => {
     expect(guestNote(null, 2)).toBeNull();
   });
 
+  it('says the line is paused on Call next while paused (E6)', () => {
+    expect(callNextEmptyLabel(5, true, true)).toBe('Line paused');
+    expect(callNextEmptyLabel(0, false, true)).toBe('Line paused');
+    expect(callNextEmptyLabel(5, true, false)).toBeNull();
+  });
+
   it('labels an uncallable Call next as §2.5 now specifies', () => {
     expect(callNextEmptyLabel(0, false)).toBe('Line is empty');
     expect(callNextEmptyLabel(3, false)).toBe('Nobody checked in');
     expect(callNextEmptyLabel(3, true)).toBeNull();
+  });
+});
+
+describe('service worker (E8)', () => {
+  it('never caches API responses such as the results CSV', () => {
+    const config = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
+    expect(config).not.toMatch(/runtimeCaching\s*:/);
+    expect(config).toContain('navigateFallbackDenylist: [/^\\/api\\//');
   });
 });

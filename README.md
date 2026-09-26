@@ -35,6 +35,29 @@ design are in [`docs/`](docs); choices made where the specs were open are in
   logs, SMS bodies are never stored.
 - **Installable PWA**, light theme tuned for sunlight, dark and max-contrast modes.
 
+## New in v1.1
+
+- **Lobby display** for a TV or tablet at the venue: the event name, a huge Now serving ticket
+  with a privacy-filtered name ("Emma R.", or tickets only when names are hidden), the next five
+  tickets, and the join QR code. Always dark, 16:9, keeps the screen awake, updates live and
+  reconnects by itself. On the Share screen, **Make a TV link** creates an unguessable link
+  (`/d/…`) and **Open on TV** copies it; **Turn off TV link** revokes it and disconnects any open
+  display. It shows nothing a guest status page doesn't: no phone numbers.
+- **Pause the line** (More → Pause line) with an optional message such as "Back in 10 minutes —
+  lunch break". Call next is disabled, guest pages and the lobby show a paused banner, and no Up
+  next texts go out until **Resume** (held ones are sent then). Optionally text everyone waiting
+  that the line is paused (off by default; honours No texts and opt-outs). Undoable, and synced
+  to helper devices.
+- **Results CSV** (Settings → Data → Download results) for photo ordering: ticket, party name,
+  size, members, phone (E.164), group, notes, final status, and checked-in, called and done
+  times in your time zone. Available while the event is open or ended, until the data is purged
+  `RETENTION_DAYS` after it ends. Cells that could run as spreadsheet formulas (starting with
+  `=`, `+`, `-`, `@`, tab or CR) get a leading `'`, so phone numbers read `'+15551234567`.
+
+| Lobby display (TV)                                   | Host: line paused                                | Guest: line paused                                 |
+| ---------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| ![Lobby display](docs/screenshots/lobby-display.png) | ![Host paused](docs/screenshots/host-paused.png) | ![Guest paused](docs/screenshots/guest-paused.png) |
+
 ## Architecture
 
 ```
@@ -234,6 +257,7 @@ Default messages (GSM-7, at most 160 characters):
 | Up next                                  | `{event}: {name}, you're up next! Please head to the photo area now. Status: {link}`       |
 | Your turn                                | `{event}: {name}, it's your turn! Please come to the camera now.`                          |
 | Missed                                   | `{event}: {name}, we called you but missed you. Find the host to get back in line: {link}` |
+| Line paused (optional, v1.1)             | `{event}: {name}, the photo line is paused for a short break. You keep your place: {link}` |
 
 ## Excel / CSV template
 
@@ -269,4 +293,5 @@ in the preview.
   with the PIN to delete data).
 - Names, phone numbers, members, notes, status links and the SMS log are deleted 7 days after
   close (or immediately with **Delete guest data now**). Counts and average service time are kept.
+  Download the results CSV (Settings → Data) before then; the lobby display link is cleared too.
 - The purge runs at startup and every 24 hours, with `VACUUM` weekly.

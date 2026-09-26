@@ -32,6 +32,8 @@ export const DEFAULTS = {
   selfJoinPerIp: 60,
   /** Twilio join texts from self-join per event per hour; env SELF_JOIN_TEXTS_PER_HOUR. */
   selfJoinTextsPerHour: 60,
+  /** G5: parties listed under "Up next" on the lobby display. */
+  lobbyComingUp: 5,
 } as const;
 
 /** PIN: 6–12 chars, digits or letters (§2.10). */

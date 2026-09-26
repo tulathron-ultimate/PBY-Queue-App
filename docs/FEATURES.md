@@ -16,9 +16,9 @@ Scale: Value 1 (nice) to 5 (essential). Effort S is under half a day, M is 1 to 
 | E3 | Helper devices | A second phone or tablet joins with the same PIN. All devices sync over WebSocket. | 4 | S | **MVP** | Last write wins. The server is the only authority on queue order. |
 | E4 | Event settings screen | Change N, SMS mode (tap-to-send or Twilio), self-join on/off, public name display. | 4 | S | **MVP** | |
 | E5 | Close / delete event | Close stops self-join and status updates. "Delete now" purges immediately. | 5 | S | **MVP** | Retention in §2.12. |
-| E6 | Pause queue ("On break") | Shows "Photographer on a short break" to guests. | 3 | S | v1.1 | |
+| E6 | Pause queue ("On break") | Shows "Photographer on a short break" to guests. | 3 | S | **Built (v1.1)** | Rules in §2.13. Optional short message (≤120 chars) and optional "we're paused" text; undoable. |
 | E7 | Editable message templates | Per-event editing with a live 160-char and GSM-7 counter. | 3 | S | v1.1 | MVP ships the fixed defaults from §2.4. |
-| E8 | Export results CSV | Who was served, when, and no-shows. Useful for photo ordering. | 3 | S | v1.1 | Must happen before the retention purge. |
+| E8 | Export results CSV | Who was served, when, and no-shows. Useful for photo ordering. | 3 | S | **Built (v1.1)** | Must happen before the retention purge. Columns and escaping in §2.15. |
 | E9 | Multiple stations | Two or more photographers pulling from one queue, or several queues per event. | 2 | L | Later | |
 
 ### 1.2 Adding parties
@@ -73,7 +73,7 @@ Scale: Value 1 (nice) to 5 (essential). Effort S is under half a day, M is 1 to 
 | G2 | Name privacy on public views | "Now serving" shows `#14 Emma R.` (first name plus last initial), or only `#14` if the host turns names off. | 4 | S | **MVP** | Protects children's full names. |
 | G3 | Leave line | The guest cancels from the status page (with a confirm step). | 4 | S | v1.1 | Keeps positions accurate. |
 | G4 | "I'm here" check-in | Pairs with A8. | 4 | S | **MVP** | |
-| G5 | Lobby/TV board | `/e/{eventCode}/board` is a large read-only display of Now serving and Up next. | 3 | S | v1.1 | Uses the same privacy rule as G2. No wait time (G6). |
+| G5 | Lobby/TV board | A large read-only 16:9 display of Now serving and the next 5 tickets, with the join QR code. | 3 | S | **Built (v1.1)** | Built at `/d/{token}` with an unguessable, revocable per-event token instead of the public event code (§2.14). Same privacy rule as G2. No wait time (G6). |
 | G6 | ~~Wait-time estimate~~ | **Removed by owner decision (2026-09-25):** "don't use wait times, as it can vary." No screen, text or display shows a wait time or ETA; guests see their position and how many are ahead. | – | – | **Removed** | See §2.3. |
 
 ### 1.6 Platform & privacy
@@ -85,7 +85,7 @@ Scale: Value 1 (nice) to 5 (essential). Effort S is under half a day, M is 1 to 
 | P3 | Log hygiene | Phone numbers are masked in logs (`+1******1234`). No SMS bodies are logged. | 5 | S | **MVP** | |
 | P4 | Capacitor native wrap | Native contacts and SMS adapters. | 3 | L | Later | Adapters already isolated per DECISIONS. |
 
-**MVP = E1–E5, A1–A6, Q1–Q9, S1–S4, G1–G2, P1–P3.**
+**MVP = E1–E5, A1–A6, Q1–Q9, S1–S4, G1–G2, P1–P3.** **Built in v1.1: E6, E8, G5.**
 
 ---
 
@@ -123,6 +123,7 @@ Placeholders: `{event}` (≤20), `{name}` (first word of the display name, ≤12
 | `up_next` | `{event}: {name}, you're up next! Please head to the photo area now. Status: {link}` | 140 |
 | `your_turn` | `{event}: {name}, it's your turn! Please come to the camera now.` | 82 |
 | `skipped` | `{event}: {name}, we called you but missed you. Find the host to get back in line: {link}` | 146 |
+| `paused` (v1.1, E6) | `{event}: {name}, the photo line is paused for a short break. You keep your place: {link}` | 146 (149 with a 48-char link; with the STOP footer the name is dropped: ≤160) |
 
 Rules:
 - The `join` message is sent on import, manual add and self-join. For an import, the "Send join texts" confirmation shows how many texts will go out (in tap-to-send mode, 200 taps is unrealistic, so this defaults to **off for imports and on for self-join**).
@@ -193,8 +194,12 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 | PIN brute force | 5 failures per IP per minute causes a 60 s block. **20 failures per (event, IP) per hour lock that event for that IP for 15 min**, so a stranger holding the public join code only locks themselves out. Backstop: **200 failures per event per hour** from all addresses together lock the event for everyone for 15 min. (Was 20 per event; changed by owner decision after QA #14.) |
 | Host session | An HttpOnly, Secure, SameSite=Lax cookie, valid for 12 h and cleared when the event closes. |
 | Status endpoint | 60 req/min per IP. An unknown token returns a generic 404. |
-| Self-join | **60 joins per (IP, event) per 10 min**, configurable with the `SELF_JOIN_PER_IP` env var. Keyed per event because families at one venue share a Wi-Fi or carrier NAT address (was 10 per IP; changed by owner decision after QA #13). One active party per phone per event (a duplicate returns the existing status link). Honeypot field; no CAPTCHA in MVP. The 500 active-party cap (§2.7) still applies. |
+| Self-join | **60 joins per (IP, event) per 10 min**, configurable with the `SELF_JOIN_PER_IP` env var. Keyed per event because families at one venue share a Wi-Fi or carrier NAT address (was 10 per IP; changed by owner decision after QA #13). One active party per phone per event: a duplicate self-join only gets "You're already in line" and never that party's status link (owner decision, SEC-10). Honeypot field; no CAPTCHA in MVP. The 500 active-party cap (§2.7) still applies. |
 | Twilio join texts from self-join | **60 per event per hour** (env `SELF_JOIN_TEXTS_PER_HOUR`), so strangers with the QR code can't run up the Twilio bill by joining with numbers they know. Parties over the cap still join; their join text is not sent automatically and instead waits in the host's "Texts to send" tray, with a banner on the dashboard (QA #15). Host-added parties and Up next / Your turn texts are not capped. |
+| Admin password | 5 failures per client per minute block it for 60 s. **30 failures per hour from all addresses together lock event creation for 15 min** (SECURITY_REVIEW SEC-5). |
+| Rate-limit keys | A client is its IPv4 address or its **IPv6 /64** (SEC-5). Limiter maps hold at most 50,000 keys (SEC-6). |
+| WebSockets | At most 10 per status link and 5 per host session (the oldest is closed), and 1,000 per client (SEC-7). |
+| Request bodies | 64 KB, except the host import at 2 MB (SEC-9). |
 
 ### 2.11 SMS opt-out & Twilio compliance
 
@@ -221,6 +226,37 @@ Row order becomes queue order. Rows with no `Name` are skipped. Invalid rows are
 | Opt-out hashes | Kept indefinitely (§2.11). |
 | Backups | Back up the SQLite file only if the host opts in, and document that backups extend retention. |
 | Purge job | Runs on startup and every 24 h. Deleted rows are removed for real, followed by `VACUUM` weekly. |
+
+### 2.13 Pause the line (E6, v1.1)
+
+| Rule | Default |
+|------|---------|
+| Who | Host devices only (any signed-in helper). **Pause line** is in the dashboard's More menu; **Resume** is on the paused strip above Call next. Helper devices sync live. |
+| Message | Optional, ≤**120** characters, text only: control and bidi characters are removed. Shown on guest status pages, the lobby display and the host dashboard. It is not put in texts. |
+| While paused | Call next is refused (dashboard: disabled, "Line paused"). "Not here" marks the party skipped but calls nobody else. Serve now still works (an explicit host choice). Parties still move into `up_next` so pages stay correct, but **no Up next texts go out**: Twilio sends none, and tray texts queued before the pause are held out of the tray. "Text now" on a waiting party sends the `paused` text instead of Up next. |
+| Resume | Call next works again. Up next texts that were held go out once (the "sent once per entry" rule of §2.2 still applies). Queued `paused` texts that were not sent yet are dropped. |
+| "We're paused" text | Optional, **off by default**. One `paused` text per party waiting (arrived or not), at most once per party per hour (so toggling Pause/Resume doesn't re-text anyone), through the tray or Twilio per the event's mode. It follows No texts, consent and the opt-out list like every text, and in Twilio mode it counts toward the hourly `SELF_JOIN_TEXTS_PER_HOUR` cap. |
+| Undo | Pause and Resume are undoable. Every undo step also records the pause state it replaces. |
+
+### 2.14 Lobby display link (G5, v1.1)
+
+| Rule | Default |
+|------|---------|
+| Link | `https://{host}/d/{token}`: 18 random bytes (144 bits), base64url (24 chars). The host makes it on the Share screen ("Make a TV link", then "Open on TV" copies it). None exists until the host makes one. |
+| Storage | The token (so any host device can show it again) and its SHA-256, which lookups use, followed by a constant-time compare. |
+| Revoke | "Turn off TV link" clears it. "Make a TV link" returns the existing link if there is one (two helper devices can't cut off each other's TV); the API rotates it only with `{"replace": true}`. On a revoke or rotation, displays on the old link are disconnected at once. The purge (§2.12) clears it too. |
+| Payload | Built from an allowlist: event name, ended flag, pause state and message, now serving and the next **5** arrived parties as ticket + G2 name ("Emma R.", or null when names are off), and the join link and QR path (null when self-join is off). No phone numbers, party ids, status tokens, notes, members or sizes. |
+| Limits | Unknown tokens count toward the per-IP miss limit shared with status links and join codes (§2.10); each real link gets 60 requests a minute. Tokens are redacted from logs, and every response has `Referrer-Policy: no-referrer`. |
+| Display | Always dark, 16:9 (stacks when held upright), keeps the screen awake, reconnects on its own with 15 s polling as a fallback. |
+
+### 2.15 Results CSV export (E8, v1.1)
+
+| Rule | Default |
+|------|---------|
+| Where | Settings → Data → **Download results (CSV)**, while the event is open or closed, until the retention purge (after closing, sign back in with the PIN). Host session only (`GET /api/host/events/{id}/export.csv`). |
+| Columns | `Ticket, Party name, Party size, Members, Phone, Group, Notes, Final status, Checked in, Called, Done`. Members are joined with `; `. Phone is E.164 (blank if missing or invalid). Final status is `done`, `no_show`, `skipped`, `removed` or `waiting` (Up next counts as waiting), or `now_serving` for a party being photographed at export time. Times are `YYYY-MM-DD HH:MM:SS` in the device's time zone; Done is filled for done parties only. Check-in times are recorded from v1.1 on. |
+| Escaping | Any cell starting with `=`, `+`, `-`, `@` (or their full-width forms), also after leading whitespace, or with tab, CR or LF, gets a leading `'` (so every phone number shows as `'+15551234567`), then RFC 4180 quoting. |
+| File | UTF-8 with a BOM (for Excel), CRLF lines, `Content-Disposition: attachment` with an ASCII name like `pumpkin-patch-portraits-2026-10-01-results.csv`, `Cache-Control: no-store`, `nosniff`. The service worker never caches API responses. |
 
 ---
 

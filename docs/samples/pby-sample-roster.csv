@@ -1,0 +1,32 @@
+﻿Name,Phone,Party Size,Members,Group,Notes
+Example Family (this row is skipped),(512) 555-0199,3,"Ann, Bob, Cy",,"Delete or keep; rows starting with ""Example"" are ignored"
+Garcia Family,(512) 555-0100,4,"Maria, Leo, Ana, Sam",Families,
+Nguyen Family,(512) 555-0101,5,"Linh, Bao, Mai, An, Kim",Families,Grandma uses a wheelchair
+Smith Family,(512) 555-0102,4,"Jen, Tom, Lily, Max",Families,
+Patel Family,(512) 555-0103,3,"Priya, Dev, Asha",Families,
+Johnson Twins,(512) 555-0104,2,"Ava, Mia",Families,Matching outfits
+Rossi Family,(512) 555-0105,6,"Marco, Giulia, Luca, Sofia, Enzo, Nonna",Families,
+Kim Family,(512) 555-0106,3,"Joon, Hana, Min",Families,
+Okafor Family,(512) 555-0107,4,"Chidi, Ada, Obi, Nneka",Families,
+Martinez Family,(512) 555-0108,5,"Carlos, Elena, Diego, Lucia, Mateo",Families,Bringing the dog
+Brown Family,(512) 555-0109,2,"Olivia, James",Families,
+Wilson Family,(512) 555-0110,4,"Ethan, Grace, Noah, Ella",Families,
+Anderson Family,(512) 555-0111,3,"Chris, Megan, Owen",Families,
+Lopez Family,(512) 555-0112,4,"Ana, Jorge, Isabel, Tomas",Families,
+Emma Reyes,(512) 555-0113,1,,Seniors,Class of 2027 senior portrait
+Liam Carter,(512) 555-0114,1,,Seniors,
+Sophia Bennett,(512) 555-0115,1,,Seniors,Two outfit changes
+Noah Brooks,(512) 555-0116,1,,Seniors,
+Chloe Park,(512) 555-0117,1,,Seniors,
+Mason Rivera,(512) 555-0118,1,,Seniors,
+Wildcats U10 Soccer,(512) 555-0119,14,,Teams,Coach Dana is the contact
+Lady Hawks Volleyball,(512) 555-0120,12,,Teams,
+Eagles Cheer,(512) 555-0121,16,,Teams,Needs the big backdrop
+Hernandez & Cole,(512) 555-0122,2,"Rosa, Ben",Couples,Engagement mini session
+Taylor & Morgan,(512) 555-0123,2,"Taylor, Morgan",Couples,
+Davis Family,(512) 555-0124,5,"Mark, Kate, Ben, Zoe, Abby",Families,
+Thompson Family,(512) 555-0125,3,"Ray, Tina, Jack",Families,
+White Family,(512) 555-0126,4,"Sam, Lee, Ivy, Gus",Families,
+Scott Family,(512) 555-0127,3,"Nate, Amy, Rose",Families,"Arriving late, around 11"
+Harris Family,(512) 555-0128,6,"Dan, Beth, Eli, Nora, Finn, Maya",Families,
+Walk-in: no phone,,2,,Families,"No phone, so no texts; call their name"

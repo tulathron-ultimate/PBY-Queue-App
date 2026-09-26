@@ -11,3 +11,6 @@ data/
 test-results/
 playwright-report/
 coverage/
+
+# Claude Code agent worktrees
+.claude/worktrees/

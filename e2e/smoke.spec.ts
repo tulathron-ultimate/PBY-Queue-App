@@ -99,5 +99,61 @@ test('create event → add parties → check in → call next → guest sees it 
   await expect(guest.getByTestId('your-turn')).toBeVisible();
   await expect(guest.getByRole('alert')).toContainText("It's your turn!");
 
+  // Pause the line (E6) with a message: Call next is off and Smith's page shows the banner.
+  await page.keyboard.press('Escape'); // the texts tray opened after Call next
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByTestId('menu-pause').click();
+  await page.getByLabel('Message for guests (optional)').fill('Back in 10 minutes — lunch break');
+  await page.getByTestId('pause-submit').click();
+  await expect(page.getByTestId('paused-bar')).toContainText('Back in 10 minutes');
+  await expect(page.getByTestId('call-next')).toBeDisabled();
+  await expect(page.getByTestId('call-next')).toContainText('Line paused');
+  await expect(smith.getByTestId('paused-banner')).toContainText('The line is paused.');
+  await expect(smith.getByTestId('paused-banner')).toContainText(
+    'Back in 10 minutes — lunch break',
+  );
+
+  // Lobby display (G5): make the TV link on the Share screen and open it on a "TV".
+  await page.getByRole('button', { name: 'Share and QR code' }).click();
+  await page.getByTestId('lobby-create').click();
+  const lobbyHref = await page.getByTestId('open-lobby-here').getAttribute('href');
+  expect(lobbyHref).toMatch(/\/d\/[A-Za-z0-9_-]{24}$/);
+  const tvContext = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const tv = await tvContext.newPage();
+  await tv.goto(lobbyHref!);
+  await expect(tv.getByTestId('lobby-now')).toContainText('#2');
+  await expect(tv.getByTestId('lobby-now')).toContainText('Nguyen F.');
+  await expect(tv.getByTestId('lobby-next')).toContainText('#3');
+  await expect(tv.getByTestId('lobby-paused')).toContainText('Back in 10 minutes');
+  await expect(tv.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(tv.locator('body')).not.toContainText('555');
+  await expect(tv.locator('body')).not.toContainText('Family');
+
+  // Resume from the dashboard: the banner goes away live on the guest page and the TV.
+  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByTestId('resume').click();
+  await expect(page.getByTestId('paused-bar')).toHaveCount(0);
+  await expect(smith.getByTestId('paused-banner')).toHaveCount(0);
+  await expect(tv.getByTestId('lobby-paused')).toHaveCount(0);
+
+  // Results CSV (E8) from Settings.
+  await page.goto(page.url() + '/settings');
+  await expect(page.getByTestId('retention-note')).toContainText('7 days');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByTestId('export-csv').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^pumpkin-patch-portraits-.*-results\.csv$/);
+  const csv = await (await download.createReadStream()).toArray();
+  const text = Buffer.concat(csv).toString('utf8');
+  expect(text).toContain('Ticket,Party name,Party size');
+  expect(text).toContain("1,Garcia Family,4,Maria; Leo; Ana; Sam,'+15552018830,,,done,");
+
+  // Turning the TV link off disconnects the display.
+  await page.goto(page.url().replace('/settings', '/share'));
+  await page.getByTestId('lobby-off').click();
+  await page.getByRole('button', { name: 'Turn off', exact: true }).click();
+  await expect(tv.getByTestId('lobby-gone')).toBeVisible();
+
+  await tvContext.close();
   await guestContext.close();
 });

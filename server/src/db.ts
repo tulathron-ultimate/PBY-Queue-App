@@ -4,7 +4,8 @@ import Database from 'better-sqlite3';
 
 export type DB = Database.Database;
 
-const MIGRATIONS: string[] = [
+/** Schema migrations; `user_version` counts how many have run. */
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
@@ -104,12 +105,32 @@ const MIGRATIONS: string[] = [
   ALTER TABLE events ADD COLUMN last_host_action_at INTEGER;
   UPDATE events SET last_host_action_at = last_action_at;
   `,
+  // 3: pause the line (E6). Undo steps also record the pause state they replace.
+  `
+  ALTER TABLE events ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE events ADD COLUMN pause_message TEXT;
+  ALTER TABLE events ADD COLUMN paused_at INTEGER;
+  ALTER TABLE undo_stack ADD COLUMN event_state TEXT;
+  `,
+  // 4: G5 lobby display link. Looked up by hash; NULL when the host has not made one.
+  `
+  ALTER TABLE events ADD COLUMN lobby_token TEXT;
+  ALTER TABLE events ADD COLUMN lobby_token_hash TEXT;
+  CREATE UNIQUE INDEX events_lobby_token_hash ON events(lobby_token_hash);
+  `,
+  // 5: E8 export needs the check-in time. Unknown (NULL) for parties from before this version.
+  `
+  ALTER TABLE parties ADD COLUMN arrived_at INTEGER;
+  `,
 ];
 
 export function openDb(path: string): DB {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
+  // SEC-3: overwrite deleted content with zeros, so purged names and phone numbers don't
+  // linger in free pages until the weekly VACUUM.
+  db.pragma('secure_delete = ON');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
   const version = db.pragma('user_version', { simple: true }) as number;

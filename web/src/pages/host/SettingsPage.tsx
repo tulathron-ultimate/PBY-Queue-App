@@ -1,6 +1,8 @@
 import { LIMITS, type EventSettings } from '@pby/shared';
 import { useState } from 'react';
 import { api, errorMessage } from '../../api';
+import { Icon } from '../../icons';
+import { downloadFromApi } from '../../platform/files';
 import { Sheet, Stepper, Toggle, TopBar } from '../../components/ui';
 import { applyTheme, savePrefs, type Prefs, type TextSize, type Theme } from '../../prefs';
 import { navigate } from '../../router';
@@ -13,6 +15,29 @@ export function SettingsPage({ ctx }: { ctx: HostContext }) {
   const closed = e.status === 'closed';
   const [confirm, setConfirm] = useState<'end' | 'delete' | null>(null);
   const [smsName, setSmsName] = useState(e.smsName ?? '');
+  const [exporting, setExporting] = useState(false);
+  const days = snap.retentionDays;
+  const purgeDate = e.closedAt
+    ? new Date(e.closedAt + days * 86_400_000).toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      })
+    : null;
+  const exportResults = async () => {
+    setExporting(true);
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
+      await downloadFromApi(
+        `/api/host/events/${id}/export.csv?tz=${encodeURIComponent(tz)}`,
+        'results.csv',
+      );
+    } catch (err) {
+      toast({ text: err instanceof Error ? err.message : errorMessage(err), danger: true });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const save = async (patch: Partial<EventSettings>) => {
     try {
@@ -186,6 +211,28 @@ export function SettingsPage({ ctx }: { ctx: HostContext }) {
           </button>
         </div>
 
+        <h2 className="group-label eyebrow">Data</h2>
+        <div className="stack">
+          <button
+            type="button"
+            className="btn secondary left"
+            disabled={exporting}
+            onClick={() => void exportResults()}
+            data-testid="export-csv"
+          >
+            <Icon name="download" /> {exporting ? 'Preparing…' : 'Download results (CSV)'}
+          </button>
+          <p className="help" style={{ margin: 0 }} data-testid="retention-note">
+            Everyone in the line, with status and check-in, called and done times, for photo
+            ordering.{' '}
+            <b>
+              {purgeDate
+                ? `Guest data is deleted on ${purgeDate}, ${days} ${days === 1 ? 'day' : 'days'} after the event ended. Download it before then.`
+                : `Guest data is deleted ${days} ${days === 1 ? 'day' : 'days'} after the event ends. Download it before then.`}
+            </b>
+          </p>
+        </div>
+
         <h2 className="group-label eyebrow">Event</h2>
         <div className="stack">
           {!closed && (
@@ -197,7 +244,8 @@ export function SettingsPage({ ctx }: { ctx: HostContext }) {
             Delete guest data now
           </button>
           <p className="help" style={{ margin: 0 }}>
-            Guest names and numbers are deleted automatically 7 days after the event ends.
+            Guest names and numbers are deleted automatically {days} {days === 1 ? 'day' : 'days'}{' '}
+            after the event ends.
           </p>
         </div>
       </div>

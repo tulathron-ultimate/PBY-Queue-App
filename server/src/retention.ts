@@ -28,11 +28,15 @@ export function purgeEvent(db: DB, eventId: string, now: number): void {
     db.prepare('DELETE FROM parties WHERE event_id = ?').run(eventId);
     db.prepare(
       `UPDATE events SET status = 'closed', closed_at = COALESCE(closed_at, ?), purged_at = ?,
-        samples = '[]', served_count = COALESCE(served_count, ?), no_show_count = COALESCE(no_show_count, ?),
+        samples = '[]', paused = 0, pause_message = NULL, paused_at = NULL,
+        lobby_token = NULL, lobby_token_hash = NULL, served_count = COALESCE(served_count, ?), no_show_count = COALESCE(no_show_count, ?),
         avg_service_ms = COALESCE(avg_service_ms, ?)
        WHERE id = ?`,
     ).run(now, now, counts.served ?? 0, counts.no_show ?? 0, avgMs, eventId);
   })();
+  // SEC-3: the WAL still holds the pre-delete page images. Copy the zeroed pages back into the
+  // database file and empty the WAL, so the purge is real on disk, not just in queries.
+  db.pragma('wal_checkpoint(TRUNCATE)');
 }
 
 export interface RetentionResult {

@@ -32,6 +32,13 @@ export interface EventRecord {
   lastCallAt: number | null;
   closedAt: number | null;
   purgedAt: number | null;
+  /** E6 pause. */
+  paused: boolean;
+  pauseMessage: string | null;
+  pausedAt: number | null;
+  /** G5 lobby display link token and its SHA-256 (lookups use the hash). */
+  lobbyToken: string | null;
+  lobbyTokenHash: string | null;
 }
 
 export interface PartyRecord extends QueueParty {
@@ -48,6 +55,8 @@ export interface PartyRecord extends QueueParty {
   consent: boolean;
   noTexts: boolean;
   createdAt: number;
+  /** When the party was checked in (A8), for the results export (E8). */
+  arrivedAt: number | null;
 }
 
 export interface SmsLogRecord {
@@ -85,6 +94,11 @@ function toEvent(r: any): EventRecord {
     lastCallAt: r.last_call_at,
     closedAt: r.closed_at,
     purgedAt: r.purged_at,
+    paused: !!r.paused,
+    pauseMessage: r.pause_message ?? null,
+    pausedAt: r.paused_at ?? null,
+    lobbyToken: r.lobby_token ?? null,
+    lobbyTokenHash: r.lobby_token_hash ?? null,
   };
 }
 
@@ -112,6 +126,7 @@ function toParty(r: any): PartyRecord {
     calledAt: r.called_at,
     doneAt: r.done_at,
     createdAt: r.created_at,
+    arrivedAt: r.arrived_at ?? null,
   };
 }
 
@@ -140,6 +155,11 @@ export class Store {
 
   getEventByCode(code: string): EventRecord | null {
     const r = this.db.prepare('SELECT * FROM events WHERE code = ?').get(code.toUpperCase());
+    return r ? toEvent(r) : null;
+  }
+
+  getEventByLobbyHash(hash: string): EventRecord | null {
+    const r = this.db.prepare('SELECT * FROM events WHERE lobby_token_hash = ?').get(hash);
     return r ? toEvent(r) : null;
   }
 
@@ -180,6 +200,11 @@ export class Store {
       lastCallAt: 'last_call_at',
       closedAt: 'closed_at',
       purgedAt: 'purged_at',
+      paused: 'paused',
+      pauseMessage: 'pause_message',
+      pausedAt: 'paused_at',
+      lobbyToken: 'lobby_token',
+      lobbyTokenHash: 'lobby_token_hash',
     };
     const sets: string[] = [];
     const values: unknown[] = [];
@@ -210,10 +235,10 @@ export class Store {
       .prepare(
         `INSERT INTO parties (id, event_id, token, ticket, name, size, members, phone,
           phone_invalid_input, group_label, notes, source, consent, no_texts, state, sort_key,
-          arrived, skip_count, up_next_sent, called_at, done_at, created_at)
+          arrived, skip_count, up_next_sent, called_at, done_at, created_at, arrived_at)
          VALUES (@id, @eventId, @token, @ticket, @name, @size, @members, @phone,
           @phoneInvalidInput, @group, @notes, @source, @consent, @noTexts, @state, @sortKey,
-          @arrived, @skipCount, @upNextSent, @calledAt, @doneAt, @createdAt)`,
+          @arrived, @skipCount, @upNextSent, @calledAt, @doneAt, @createdAt, @arrivedAt)`,
       )
       .run({
         ...p,
@@ -225,11 +250,11 @@ export class Store {
       });
   }
 
-  updatePartyQueue(p: QueueParty): void {
+  updatePartyQueue(p: QueueParty & { arrivedAt: number | null }): void {
     this.db
       .prepare(
         `UPDATE parties SET state = ?, sort_key = ?, arrived = ?, skip_count = ?, up_next_sent = ?,
-          called_at = ?, done_at = ? WHERE id = ?`,
+          called_at = ?, done_at = ?, arrived_at = ? WHERE id = ?`,
       )
       .run(
         p.state,
@@ -239,6 +264,7 @@ export class Store {
         p.upNextSent ? 1 : 0,
         p.calledAt,
         p.doneAt,
+        p.arrivedAt,
         p.id,
       );
   }

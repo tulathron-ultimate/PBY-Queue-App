@@ -5,15 +5,21 @@
  */
 import {
   addParties as addToQueue,
+  buildResultsCsv,
   callNext as queueCallNext,
   clampInt,
+  cleanPauseMessage,
+  cleanText,
   completeCurrent,
   DEFAULTS,
   hasErrors,
+  holdUpNextTexts,
   isValidPin,
   LIMITS,
   maskPhone,
   move as queueMove,
+  resultsFileName,
+  pausedTextEffects,
   QueueError,
   recomputeUpNext,
   reinsert as queueReinsert,
@@ -29,6 +35,7 @@ import {
   type HostSnapshot,
   type ImportPartyInput,
   type JoinInfo,
+  type LobbySnapshot,
   type MoveDirection,
   type PartyState,
   type PartySource,
@@ -41,12 +48,19 @@ import {
 } from '@pby/shared';
 import type { Config } from './config.js';
 import { getMeta, setMeta, type DB } from './db.js';
+import { hashLobbyToken, LOBBY_TOKEN_PATTERN, newLobbyToken, sameLobbyToken } from './lobby.js';
 import { QUEUE_ERROR_MESSAGES, ServiceError } from './errors.js';
 import { purgeEvent } from './retention.js';
 import { hashPin, newId, newJoinCode, newStatusToken, randomString, sha256 } from './security.js';
 import { Sessions } from './sessions.js';
 import { tapToSend, TWILIO_UNSUBSCRIBED, type SmsProvider } from './sms/provider.js';
-import { buildGuestSnapshot, buildHostSnapshot, buildJoinInfo, renderBody } from './snapshots.js';
+import {
+  buildGuestSnapshot,
+  buildHostSnapshot,
+  buildJoinInfo,
+  buildLobbySnapshot,
+  renderBody,
+} from './snapshots.js';
 import { Store, type EventRecord, type PartyRecord } from './store.js';
 
 export interface Logger {
@@ -84,13 +98,23 @@ type MutationResult = QueueResult<PartyRecord> & { extraEffects?: TextEffect[] }
 
 const UNDO_KEEP = 20;
 
+/** A party gets at most one broadcast "we're paused" text in this window (SEC-19). */
+const PAUSED_TEXT_WINDOW_MS = 3_600_000;
+
+const PAUSED_ERROR = () =>
+  new ServiceError(409, 'paused', 'The line is paused. Resume it to call the next party.');
+
 /** The states in which a pending tray text still makes sense. */
 const STILL_RELEVANT: Record<TemplateKey, PartyState[]> = {
   join: ['waiting', 'up_next'],
   up_next: ['waiting', 'up_next'],
   your_turn: ['now_serving'],
   skipped: ['skipped', 'no_show'],
+  paused: ['waiting', 'up_next'],
 };
+
+/** The event fields an Undo step restores besides the queue (E6 pause). */
+type EventState = Pick<EventRecord, 'paused' | 'pauseMessage' | 'pausedAt'>;
 
 function queueChanged(a: PartyRecord, b: PartyRecord): boolean {
   return (
@@ -104,8 +128,11 @@ function queueChanged(a: PartyRecord, b: PartyRecord): boolean {
   );
 }
 
+/** Event names are shown to every guest, so they get the same hygiene as party names (SEC-8). */
 function text(value: unknown, max: number): string {
-  return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, max) : '';
+  return typeof value === 'string'
+    ? cleanText(value).trim().replace(/\s+/g, ' ').slice(0, max)
+    : '';
 }
 
 export class QueueService {
@@ -187,6 +214,11 @@ export class QueueService {
       lastCallAt: null,
       closedAt: null,
       purgedAt: null,
+      paused: false,
+      pauseMessage: null,
+      pausedAt: null,
+      lobbyToken: null,
+      lobbyTokenHash: null,
     };
     this.store.insertEvent(event);
     this.log.info({ event: event.id }, 'event created');
@@ -230,6 +262,7 @@ export class QueueService {
           ? { label: undoRow.label, at: undoRow.created_at }
           : null,
       twilioAvailable: this.twilioAvailable,
+      retentionDays: this.cfg.retentionDays,
       isOptedOut: (phone) => this.isOptedOut(phone),
       canText: (p) => this.canText(event, p),
       now: this.now(),
@@ -255,6 +288,48 @@ export class QueueService {
       if (event && party) out.set(id, buildGuestSnapshot(event, parties, party, this.now()));
     }
     return out;
+  }
+
+  /** The event a lobby display token belongs to: looked up by hash, compared in constant time. */
+  lobbyEvent(token: string): EventRecord | null {
+    if (!LOBBY_TOKEN_PATTERN.test(token)) return null;
+    const event = this.store.getEventByLobbyHash(hashLobbyToken(token));
+    if (!event || event.purgedAt || !event.lobbyToken) return null;
+    return sameLobbyToken(event.lobbyToken, token) ? event : null;
+  }
+
+  /** G5 lobby display payload for a token, or null when it is unknown or was revoked. */
+  lobbySnapshot(token: string): LobbySnapshot | null {
+    const event = this.lobbyEvent(token);
+    return event ? buildLobbySnapshot(event, this.store.listParties(event.id)) : null;
+  }
+
+  /** The event's current lobby token and payload, for broadcasting to open displays. */
+  lobbyForEvent(eventId: string): { token: string; snapshot: LobbySnapshot } | null {
+    const event = this.getEvent(eventId);
+    if (!event?.lobbyToken) return null;
+    return {
+      token: event.lobbyToken,
+      snapshot: buildLobbySnapshot(event, this.store.listParties(eventId)),
+    };
+  }
+
+  /**
+   * G5: makes a lobby display link or, with `on` false, revokes it. An existing link is kept
+   * unless `replace` is set (SEC-21: a second helper tapping "Make a TV link" on a stale screen
+   * must not cut off a TV already showing the first one). Open displays on a replaced or
+   * revoked link are disconnected by the hub.
+   */
+  setLobbyLink(eventId: string, on: boolean, replace = false): void {
+    const event = this.requireEvent(eventId, on ? { open: true } : {});
+    if (on && !replace && event.lobbyToken) return;
+    const token = on ? newLobbyToken() : null;
+    this.store.updateEvent(eventId, {
+      lobbyToken: token,
+      lobbyTokenHash: token ? hashLobbyToken(token) : null,
+    });
+    this.log.info({ event: eventId, lobby: on ? 'new link' : 'revoked' }, 'lobby link');
+    this.onChange(eventId);
   }
 
   joinInfo(code: string): JoinInfo | null {
@@ -368,6 +443,12 @@ export class QueueService {
       this.onChange(event.id);
       return;
     }
+    // The line resumed before this "we're paused" text went out: it no longer applies.
+    if (sms.template === 'paused' && !event.paused) {
+      this.store.setSmsStatus(id, 'canceled', now, 'resumed');
+      this.onChange(event.id);
+      return;
+    }
     const body = renderBody(event, parties, party, sms.template, sms.footer);
     const result = await this.twilio.send(party.phone, body);
     const logCtx = { sms: id, to: maskPhone(party.phone), template: sms.template };
@@ -407,9 +488,14 @@ export class QueueService {
         }
         throw err;
       }
+      // E6: while the line is paused (as it is after `fn`), Up next texts wait for Resume.
+      if (this.store.getEvent(eventId)?.paused) r = { ...r, ...holdUpNextTexts(r) };
       const old = new Map(before.map((p) => [p.id, p]));
-      for (const p of r.parties) {
-        const prev = old.get(p.id);
+      for (const q of r.parties) {
+        const prev = old.get(q.id);
+        // E8 export: record when a party is checked in; clear it when checked back out.
+        const arrivedAt = !q.arrived ? null : prev?.arrived ? prev.arrivedAt : now;
+        const p = arrivedAt === q.arrivedAt ? q : { ...q, arrivedAt };
         if (!prev) this.store.insertParty(p);
         else if (queueChanged(prev, p)) this.store.updatePartyQueue(p);
       }
@@ -426,14 +512,20 @@ export class QueueService {
         this.db
           .prepare(
             // `samples` (the old wait-estimate data) is unused; the column is NOT NULL.
-            `INSERT INTO undo_stack (event_id, label, snapshot, samples, sms_ids, created_at)
-             VALUES (?, ?, ?, '[]', ?, ?)`,
+            `INSERT INTO undo_stack (event_id, label, snapshot, samples, sms_ids, event_state,
+               created_at)
+             VALUES (?, ?, ?, '[]', ?, ?, ?)`,
           )
           .run(
             eventId,
             undoLabel,
             JSON.stringify(takeSnapshot(before)),
             JSON.stringify(texts.ids),
+            JSON.stringify({
+              paused: event.paused,
+              pauseMessage: event.pauseMessage,
+              pausedAt: event.pausedAt,
+            } satisfies EventState),
             now,
           );
         this.db
@@ -453,10 +545,12 @@ export class QueueService {
   /** Drops tray texts that no longer apply, e.g. "Up next" for a party now being served. */
   private cancelStaleTexts(eventId: string, parties: readonly PartyRecord[]): void {
     const byId = new Map(parties.map((p) => [p.id, p]));
+    const paused = !!this.store.getEvent(eventId)?.paused;
     for (const sms of this.store.listSms(eventId)) {
       if (sms.status !== 'pending') continue;
       const party = byId.get(sms.partyId);
-      if (!party || !STILL_RELEVANT[sms.template].includes(party.state)) {
+      const stale = sms.template === 'paused' && !paused;
+      if (!party || stale || !STILL_RELEVANT[sms.template].includes(party.state)) {
         this.store.setSmsStatus(sms.id, 'canceled', this.now());
       }
     }
@@ -464,6 +558,7 @@ export class QueueService {
 
   callNext(eventId: string): MutationResult {
     return this.mutate(eventId, 'Call next', (parties, event, now) => {
+      if (event.paused) throw PAUSED_ERROR();
       if (event.lastCallAt && now - event.lastCallAt < DEFAULTS.callNextDebounceMs) {
         throw new ServiceError(429, 'too_fast', 'Call next was just pressed.');
       }
@@ -484,7 +579,8 @@ export class QueueService {
         throw new ServiceError(429, 'too_fast', 'Call next was just pressed.');
       }
       this.store.updateEvent(eventId, { lastCallAt: now });
-      return skipCurrent(parties, event.upNextN, now);
+      // E6: while paused, "Not here" marks the party missed but calls nobody else.
+      return skipCurrent(parties, event.upNextN, now, DEFAULTS.maxSkips, !event.paused);
     });
   }
 
@@ -521,6 +617,47 @@ export class QueueService {
     );
   }
 
+  /**
+   * E6 Pause the line, with an optional short message for guests. When `notify` is true, one
+   * "we're paused" text is queued for each party waiting (tap-to-send tray or Twilio, per the
+   * event), subject to the same No texts, consent and opt-out checks as every other text.
+   */
+  pause(eventId: string, input: { message?: unknown; notify?: unknown }): MutationResult {
+    const message = cleanPauseMessage(input.message);
+    return this.mutate(eventId, 'Pause', (parties, event, now) => {
+      if (event.paused)
+        throw new ServiceError(409, 'already_paused', 'The line is already paused.');
+      this.store.updateEvent(eventId, { paused: true, pauseMessage: message, pausedAt: now });
+      // SEC-19: at most one "we're paused" text per party per hour, so toggling Pause/Resume
+      // (or two helpers pausing in turn) can't re-text the whole line each time. Texts that
+      // were canceled before going out don't count.
+      const told = this.recentlyToldPaused(eventId, now);
+      const extraEffects =
+        input.notify === true ? pausedTextEffects(parties).filter((e) => !told.has(e.partyId)) : [];
+      return { parties, effects: [], extraEffects };
+    });
+  }
+
+  /** Parties sent (or about to be sent) a `paused` text in the last hour. */
+  private recentlyToldPaused(eventId: string, now: number): Set<string> {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT party_id FROM sms_log WHERE event_id = ? AND template = 'paused'
+           AND status != 'canceled' AND created_at > ?`,
+      )
+      .all(eventId, now - PAUSED_TEXT_WINDOW_MS) as { party_id: string }[];
+    return new Set(rows.map((r) => r.party_id));
+  }
+
+  /** E6 Resume: Call next works again and the Up next texts held during the pause go out. */
+  resume(eventId: string): MutationResult {
+    return this.mutate(eventId, 'Resume', (parties, event) => {
+      if (!event.paused) throw new ServiceError(409, 'not_paused', 'The line is not paused.');
+      this.store.updateEvent(eventId, { paused: false, pauseMessage: null, pausedAt: null });
+      return recomputeUpNext(parties, event.upNextN);
+    });
+  }
+
   /** G4: the guest taps "I'm here" on their status page. */
   guestArrive(token: string): GuestSnapshot {
     const party = this.store.getPartyByToken(token);
@@ -542,9 +679,25 @@ export class QueueService {
       const row = this.db
         .prepare('SELECT * FROM undo_stack WHERE event_id = ? ORDER BY id DESC LIMIT 1')
         .get(eventId) as
-        { id: number; label: string; snapshot: string; sms_ids: string } | undefined;
+        | {
+            id: number;
+            label: string;
+            snapshot: string;
+            sms_ids: string;
+            event_state: string | null;
+          }
+        | undefined;
       if (!row) throw new ServiceError(409, 'nothing_to_undo', 'Nothing to undo.');
       label = row.label;
+      // Steps saved before pause existed carry no event state; the pause state then stays.
+      if (row.event_state) {
+        const state = JSON.parse(row.event_state) as EventState;
+        this.store.updateEvent(eventId, {
+          paused: !!state.paused,
+          pauseMessage: state.pauseMessage ?? null,
+          pausedAt: state.pausedAt ?? null,
+        });
+      }
       const alreadyTexted = new Set<string>();
       for (const id of JSON.parse(row.sms_ids) as number[]) {
         const sms = this.store.getSms(id);
@@ -637,6 +790,7 @@ export class QueueService {
         calledAt: null,
         doneAt: null,
         createdAt: now,
+        arrivedAt: null,
       }));
       this.store.updateEvent(eventId, { nextTicket: ticket });
       const r = addToQueue(parties, added, event.upNextN, opts.position);
@@ -657,13 +811,16 @@ export class QueueService {
     return added;
   }
 
-  /** Twilio join texts for self-joins in the last hour have reached the cap (QA #15). */
+  /**
+   * Twilio join texts for self-joins in the last hour have reached the cap (QA #15). Broadcast
+   * "we're paused" texts (E6) count toward it too.
+   */
   private selfJoinTextCapReached(event: EventRecord, now: number): boolean {
     const { n } = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM sms_log s JOIN parties p ON p.id = s.party_id
-         WHERE s.event_id = ? AND s.template = 'join' AND s.provider = 'twilio'
-           AND p.source = 'self' AND s.created_at > ?`,
+         WHERE s.event_id = ? AND s.provider = 'twilio' AND s.created_at > ?
+           AND ((s.template = 'join' AND p.source = 'self') OR s.template = 'paused')`,
       )
       .get(event.id, now - 3_600_000) as { n: number };
     const reached = n >= this.cfg.selfJoinTextsPerHour;
@@ -671,11 +828,15 @@ export class QueueService {
     return reached;
   }
 
-  /** A5 self-join. One active party per phone: a duplicate returns the existing link. */
+  /**
+   * A5 self-join. One active party per phone. A duplicate only learns "you're already in line"
+   * (SEC-10, owner decision): handing back that party's status link would let anyone with the
+   * public QR code and a family's phone number open the family's page.
+   */
   selfJoin(
     code: string,
     input: { name?: unknown; phone?: unknown; size?: unknown; consent?: unknown },
-  ): { token: string; existing: boolean } {
+  ): { token: string; existing: false } | { existing: true } {
     const event = this.store.getEventByCode(code);
     if (!event || event.purgedAt) throw new ServiceError(404, 'not_found', 'Event not found.');
     if (event.status !== 'open' || !event.selfJoin) {
@@ -701,7 +862,7 @@ export class QueueService {
             p.phone === v.phone &&
             (p.state === 'waiting' || p.state === 'up_next' || p.state === 'now_serving'),
         );
-      if (existing) return { token: existing.token, existing: true };
+      if (existing) return { existing: true };
     }
     const [party] = this.addParties(event.id, [v], {
       source: 'self',
@@ -748,14 +909,18 @@ export class QueueService {
       if (!this.canText(event, party)) {
         throw new ServiceError(409, 'cannot_text', "This party can't be texted.");
       }
+      const waiting = party.state === 'waiting' || party.state === 'up_next';
+      // E6: while paused, a waiting party is told the line is paused, not to come forward.
       const template: TemplateKey =
-        party.state === 'now_serving'
-          ? 'your_turn'
-          : party.state === 'up_next'
-            ? 'up_next'
-            : party.state === 'skipped' || party.state === 'no_show'
-              ? 'skipped'
-              : 'join';
+        event.paused && waiting
+          ? 'paused'
+          : party.state === 'now_serving'
+            ? 'your_turn'
+            : party.state === 'up_next'
+              ? 'up_next'
+              : party.state === 'skipped' || party.state === 'no_show'
+                ? 'skipped'
+                : 'join';
       return { parties, effects: [{ partyId, template }] };
     });
   }
@@ -815,6 +980,20 @@ export class QueueService {
     } else {
       this.onChange(eventId);
     }
+  }
+
+  /**
+   * E8 results export for photo ordering, open or closed, until the retention purge (after
+   * which the event is gone and this is a 404). Times are local to `timeZone` (else UTC).
+   */
+  resultsCsv(eventId: string, timeZone: unknown): { fileName: string; csv: string } {
+    const event = this.requireEvent(eventId);
+    const parties = this.store.listParties(eventId);
+    this.log.info({ event: eventId, rows: parties.length }, 'results exported');
+    return {
+      fileName: resultsFileName(event.name, event.date),
+      csv: buildResultsCsv(parties, typeof timeZone === 'string' ? timeZone : 'UTC'),
+    };
   }
 
   /** E5 close: stops self-join and status updates, and signs out every host device. */

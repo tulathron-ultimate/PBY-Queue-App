@@ -18,6 +18,9 @@ const DEFAULT_PREFS: Prefs = {
   askToText: true,
 };
 
+/** The lobby display is always dark: better on TVs (DESIGN §8). */
+export const LOBBY_PREFS: Prefs = { ...DEFAULT_PREFS, theme: 'dark' };
+
 export function loadPrefs(): Prefs {
   try {
     return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem('pby.prefs') ?? '{}') };

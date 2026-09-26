@@ -4,6 +4,7 @@ import {
   type HostSnapshot,
   type PendingText,
 } from '@pby/shared';
+import Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { buildApp, type AppContext } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
-import { openDb } from '../src/db.js';
+import { MIGRATIONS, openDb } from '../src/db.js';
 import { runRetention } from '../src/retention.js';
 import { twilioSignature } from '../src/sms/twilio.js';
 
@@ -325,7 +326,7 @@ describe('queue flow (tap-to-send)', () => {
     expect(s.undo?.label).toBe('Not here');
   });
 
-  it('warns-but-allows duplicate phones and self-join returns the existing link', async () => {
+  it("warns-but-allows duplicate phones; a self-join duplicate only hears it's already in line", async () => {
     const h = await setup();
     const info = await h.app.inject({ method: 'GET', url: `/api/join/${h.code}` });
     expect(info.json()).toMatchObject({ eventName: 'Pumpkin Patch Portraits', open: true });
@@ -339,7 +340,10 @@ describe('queue flow (tap-to-send)', () => {
     });
     expect(first.json().existing).toBe(false);
     const again = await join({ name: 'Smith', phone: '(555) 309-4417', size: 1, consent: true });
-    expect(again.json()).toEqual({ token: first.json().token, existing: true });
+    // SEC-10: no status link for a phone that's already in line.
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toEqual({ existing: true });
+    expect(again.body).not.toContain(first.json().token);
     expect((await join({ name: 'Bot', website: 'http://spam' })).statusCode).toBe(400);
     expect((await join({ name: 'Bad Phone', phone: '555-12' })).json().error).toBe('invalid_phone');
 
@@ -672,9 +676,9 @@ describe('auto-close uses host actions only (QA #18)', () => {
   it('adds last_host_action_at to an existing database without losing data', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pby-qa-'));
     const path = join(dir, 'old.db');
-    // Build a version-1 database: today's schema minus the new column.
-    const db = openDb(path);
-    db.exec(`ALTER TABLE events DROP COLUMN last_host_action_at`);
+    // Build a version-1 database: only the first migration.
+    const db = new Database(path);
+    db.exec(MIGRATIONS[0]);
     db.pragma('user_version = 1');
     db.prepare(
       `INSERT INTO events (id, code, name, date, pin_hash, up_next_n, minutes_per_party, sms_mode,
@@ -683,7 +687,7 @@ describe('auto-close uses host actions only (QA #18)', () => {
     ).run();
     db.close();
     const upgraded = openDb(path);
-    expect(upgraded.pragma('user_version', { simple: true })).toBe(2);
+    expect(upgraded.pragma('user_version', { simple: true })).toBe(MIGRATIONS.length);
     expect(upgraded.prepare('SELECT name, last_host_action_at h FROM events').get()).toEqual({
       name: 'Old',
       h: 42,
@@ -838,16 +842,18 @@ describe('QA regressions', () => {
 
   it("never puts a full last name or phone in a guest payload, even the guest's own", async () => {
     const h = await setup();
-    await addManual(h, 'Emma Rivera-Castillo', '555-201-8830');
-    // Anyone with the public QR code can self-join with a phone number they know; the
-    // duplicate rule hands back that party's status link, so it must not reveal the full name.
+    const partyId = await addManual(h, 'Emma Rivera-Castillo', '555-201-8830');
+    const token = (await snap(h)).parties.find((p) => p.id === partyId)!.token;
+    // Anyone with the public QR code can self-join with a phone number they know. A duplicate
+    // gets no link at all (SEC-10), so it can't open the family's status page.
     const dup = await h.app.inject({
       method: 'POST',
       url: `/api/join/${h.code}`,
       payload: { name: 'Nosy', phone: '(555) 201-8830', consent: true },
     });
-    expect(dup.json().existing).toBe(true);
-    const status = await h.app.inject({ method: 'GET', url: `/api/status/${dup.json().token}` });
+    expect(dup.json()).toEqual({ existing: true });
+    // The family's own link still hides the full last name and phone.
+    const status = await h.app.inject({ method: 'GET', url: `/api/status/${token}` });
     const body = status.body;
     expect(status.json().me.name).toBe('Emma R.');
     expect(body).not.toContain('Castillo');

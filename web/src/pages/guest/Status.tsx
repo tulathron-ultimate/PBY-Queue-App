@@ -167,7 +167,13 @@ export function Status({ token }: { token: string }) {
     hero = (
       <div className={`hero ${me.state}`} data-testid="my-card" aria-live="polite">
         {upNext && <p className="headline">◆ You're up next!</p>}
-        <div className="lbl">{upNext ? 'Head to the photo area now' : 'Your place in line'}</div>
+        <div className="lbl">
+          {upNext
+            ? snap.paused
+              ? 'Stay nearby: you go next when the line resumes'
+              : 'Head to the photo area now'
+            : 'Your place in line'}
+        </div>
         <div className={`pos${showNext ? ' word' : ''}`} data-testid="position">
           {showNext ? 'Next' : me.position}
         </div>
@@ -212,17 +218,21 @@ export function Status({ token }: { token: string }) {
             You're in! Bookmark this page{me.hasPhone ? ' or watch for our text' : ''}.
           </div>
         )}
-        {joined === 'again' && me && (
-          <div className="banner" role="status">
-            You were already in line with this number, so here is your spot.
-          </div>
-        )}
         {live.state !== 'live' && live.state !== 'connecting' && !snap.eventEnded && (
           <div className="banner" role="status">
             ⟳ Reconnecting…
             {live.lastUpdate
               ? ` last updated ${Math.max(1, Math.round((Date.now() - live.lastUpdate) / 60_000))} min ago`
               : ''}
+          </div>
+        )}
+        {snap.paused && me && me.state !== 'done' && me.state !== 'removed' && (
+          <div className="banner paused" role="status" data-testid="paused-banner">
+            <b className="pause-head">
+              <Icon name="pause" /> The line is paused.
+            </b>{' '}
+            The photographer is taking a short break. Everyone keeps their place.
+            {snap.pauseMessage && <span className="pause-msg">{snap.pauseMessage}</span>}
           </div>
         )}
         {hero}

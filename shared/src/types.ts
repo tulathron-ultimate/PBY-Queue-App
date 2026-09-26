@@ -14,7 +14,7 @@ export const PARTY_STATES: readonly PartyState[] = [
 
 export type SmsMode = 'tap' | 'twilio';
 
-export type TemplateKey = 'join' | 'up_next' | 'your_turn' | 'skipped';
+export type TemplateKey = 'join' | 'up_next' | 'your_turn' | 'skipped' | 'paused';
 
 export type PartySource = 'manual' | 'import' | 'vcard' | 'contacts' | 'self';
 
@@ -93,6 +93,13 @@ export interface HostEventInfo extends EventSettings {
   hostConsent: boolean;
   createdAt: number;
   closedAt: number | null;
+  /** E6: the host paused the line. Call next is off and Up next texts wait until Resume. */
+  paused: boolean;
+  /** Optional short note shown to guests while paused, e.g. "Back in 10 minutes". */
+  pauseMessage: string | null;
+  pausedAt: number | null;
+  /** G5: the read-only TV display link, or null when the host has not made one (or revoked it). */
+  lobbyUrl: string | null;
 }
 
 export interface HostSnapshot {
@@ -101,6 +108,8 @@ export interface HostSnapshot {
   pendingTexts: PendingText[];
   undo: { label: string; at: number } | null;
   twilioAvailable: boolean;
+  /** Days after close before guest data is purged (§2.12, env RETENTION_DAYS). */
+  retentionDays: number;
   serverTime: number;
 }
 
@@ -132,7 +141,34 @@ export interface GuestSnapshot {
   upNextN: number;
   selfJoin: boolean;
   joinCode: string;
+  /** E6: the line is paused, with the host's optional message. */
+  paused: boolean;
+  pauseMessage: string | null;
   serverTime: number;
+}
+
+/** A party on the lobby display: ticket and privacy-filtered name ("Emma R."), nothing else. */
+export interface LobbyPartyRef {
+  ticket: number;
+  /** Null when the host hides names from guests (ticket numbers only). */
+  name: string | null;
+}
+
+/**
+ * G5 lobby / TV display. Built from an allowlist: it shows no more than a guest status page
+ * does (no phone numbers, party ids, status tokens, notes, members or sizes).
+ */
+export interface LobbySnapshot {
+  eventName: string;
+  eventEnded: boolean;
+  paused: boolean;
+  pauseMessage: string | null;
+  nowServing: LobbyPartyRef | null;
+  /** The next parties Call next will take, in order (at most `DEFAULTS.lobbyComingUp`). */
+  comingUp: LobbyPartyRef[];
+  /** Self-join link and its QR code, or null when joining is off or the event ended. */
+  joinUrl: string | null;
+  joinQrUrl: string | null;
 }
 
 export interface JoinInfo {
@@ -145,4 +181,7 @@ export interface JoinInfo {
 }
 
 export type WsMessage =
-  { type: 'host'; data: HostSnapshot } | { type: 'guest'; data: GuestSnapshot } | { type: 'ping' };
+  | { type: 'host'; data: HostSnapshot }
+  | { type: 'guest'; data: GuestSnapshot }
+  | { type: 'lobby'; data: LobbySnapshot }
+  | { type: 'ping' };

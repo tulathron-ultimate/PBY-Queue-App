@@ -1,6 +1,7 @@
 import {
   findNextToCall,
   orderActive,
+  PAUSE_MESSAGE_MAX,
   phoneLast4,
   type HostParty,
   type HostSnapshot,
@@ -8,7 +9,7 @@ import {
 } from '@pby/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage } from '../../api';
-import { LivePill, STATE_LABEL, Sheet } from '../../components/ui';
+import { LivePill, STATE_LABEL, Sheet, Toggle } from '../../components/ui';
 import { Icon } from '../../icons';
 import { haptics } from '../../platform/haptics';
 import { useWakeLock } from '../../platform/wakeLock';
@@ -35,6 +36,7 @@ type Panel =
       truncated?: boolean;
     }
   | { kind: 'menu' }
+  | { kind: 'pause' }
   | { kind: 'confirm-delete' }
   | null;
 
@@ -138,6 +140,7 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
   useWakeLock(prefs.keepAwake);
 
   const closed = snap.event.status === 'closed';
+  const paused = snap.event.paused && !closed;
   const parties = snap.parties;
   const serving = parties.find((p) => p.state === 'now_serving');
   const active = useMemo(() => orderActive(parties), [parties]);
@@ -192,7 +195,7 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
   };
 
   const callNext = async () => {
-    if (calling || !next) return;
+    if (calling || !next || paused) return;
     setCalling(true);
     window.setTimeout(() => setCalling(false), 1000); // Q2: 1 s debounce
     haptics.pulse();
@@ -278,7 +281,13 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
         <h1 className="title" style={{ margin: 0 }}>
           {snap.event.name}
         </h1>
-        {!closed && <LivePill state={live.state} lastUpdate={live.lastUpdate} />}
+        {paused && live.state === 'live' ? (
+          <span className="live paused" data-testid="paused-pill">
+            Paused
+          </span>
+        ) : (
+          !closed && <LivePill state={live.state} lastUpdate={live.lastUpdate} />
+        )}
         {snap.undo && (
           <button
             type="button"
@@ -308,7 +317,7 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
         </button>
       </header>
 
-      <div className="content with-bar with-callbar">
+      <div className={`content with-bar with-callbar${paused ? ' with-pausebar' : ''}`}>
         {live.state === 'offline' && (
           <div className="banner danger" role="status">
             Offline. Showing the last update; actions need a connection.
@@ -378,9 +387,13 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
                 <button
                   type="button"
                   onClick={() =>
-                    void run(`${serving.name} missed · now serving {serving}`, () => act('/skip'), {
-                      undo: true,
-                    }).then(afterCall)
+                    void run(
+                      paused
+                        ? `${serving.name} missed`
+                        : `${serving.name} missed · now serving {serving}`,
+                      () => act('/skip'),
+                      { undo: true },
+                    ).then(afterCall)
                   }
                 >
                   <Icon name="skip" /> Not here
@@ -541,6 +554,27 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
       </div>
 
       <div className="bottombar">
+        {paused && (
+          <div className="pausebar" role="status" data-testid="paused-bar">
+            <span className="txt">
+              <Icon name="pause" />
+              <span>
+                <b>Line paused.</b>{' '}
+                {snap.event.pauseMessage
+                  ? `“${snap.event.pauseMessage}”`
+                  : 'Guests see a short-break note.'}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="btn primary"
+              data-testid="resume"
+              onClick={() => void run('Line resumed', () => act('/resume'), { undo: true })}
+            >
+              <Icon name="play" /> Resume
+            </button>
+          </div>
+        )}
         <div className="inner">
           {closed ? (
             <button
@@ -559,11 +593,18 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
               <button
                 type="button"
                 className="callnext"
-                disabled={!next || calling}
+                disabled={!next || calling || paused}
                 onClick={() => void callNext()}
                 data-testid="call-next"
               >
-                {next ? (
+                {paused ? (
+                  <>
+                    <span className="big" style={{ fontSize: 'var(--fs-lg)' }}>
+                      <Icon name="pause" /> {callNextEmptyLabel(active.length, !!next, true)}
+                    </span>
+                    <span className="small">Resume to call the next party</span>
+                  </>
+                ) : next ? (
                   <>
                     <span className="big">
                       Call next <Icon name="next" />
@@ -654,6 +695,20 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
             >
               <Icon name="check" /> {showDone ? 'Hide' : 'Show'} done &amp; removed
             </button>
+            {!closed && (
+              <button
+                type="button"
+                className="btn secondary left"
+                data-testid={paused ? 'menu-resume' : 'menu-pause'}
+                onClick={() => {
+                  if (!paused) return setPanel({ kind: 'pause' });
+                  setPanel(null);
+                  void run('Line resumed', () => act('/resume'), { undo: true });
+                }}
+              >
+                <Icon name={paused ? 'play' : 'pause'} /> {paused ? 'Resume line' : 'Pause line'}
+              </button>
+            )}
             {(tapMode || heldTexts > 0) && (
               <button
                 type="button"
@@ -668,6 +723,22 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
             </button>
           </div>
         </Sheet>
+      )}
+      {panel?.kind === 'pause' && (
+        <PauseSheet
+          textable={active.filter((p) => p.canText).length}
+          tapMode={tapMode}
+          onClose={() => setPanel(null)}
+          onPause={async (message, notify) => {
+            setPanel(null);
+            const s = await run('Line paused', () => act('/pause', { message, notify }), {
+              undo: true,
+            });
+            if (s && notify && tapMode && s.pendingTexts.some((t) => t.template === 'paused')) {
+              setPanel({ kind: 'texts' });
+            }
+          }}
+        />
       )}
       {panel?.kind === 'confirm-delete' && (
         <Sheet label="Delete guest data" onClose={() => setPanel(null)}>
@@ -695,5 +766,67 @@ export function Dashboard({ ctx }: { ctx: HostContext }) {
         </Sheet>
       )}
     </main>
+  );
+}
+
+/** E6: pause the line with an optional note for guests and an optional text to everyone waiting. */
+function PauseSheet({
+  textable,
+  tapMode,
+  onClose,
+  onPause,
+}: {
+  textable: number;
+  tapMode: boolean;
+  onClose: () => void;
+  onPause: (message: string, notify: boolean) => void;
+}) {
+  const [message, setMessage] = useState('');
+  const [notify, setNotify] = useState(false);
+  const textSub =
+    textable === 0
+      ? 'Nobody waiting can be texted.'
+      : tapMode
+        ? `${textable} ${textable === 1 ? 'text goes' : 'texts go'} to your Texts to send tray.`
+        : `${textable} ${textable === 1 ? 'text sends' : 'texts send'} automatically.`;
+  return (
+    <Sheet label="Pause the line" onClose={onClose}>
+      <h2>Pause the line</h2>
+      <p className="help" style={{ marginTop: 0 }}>
+        Call next turns off, and guests see that the line is paused. Nobody gets an Up next text
+        until you resume; everyone keeps their place.
+      </p>
+      <div className="field">
+        <label htmlFor="pause-message">Message for guests (optional)</label>
+        <input
+          id="pause-message"
+          className="input"
+          maxLength={PAUSE_MESSAGE_MAX}
+          placeholder="Back in 10 minutes — lunch break"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+        />
+      </div>
+      <Toggle
+        label="Text everyone waiting"
+        sub={`"The photo line is paused for a short break." ${textSub}`}
+        checked={notify}
+        onChange={setNotify}
+        testId="pause-notify"
+      />
+      <div className="stack" style={{ marginTop: 12 }}>
+        <button
+          type="button"
+          className="btn primary"
+          data-testid="pause-submit"
+          onClick={() => onPause(message, notify && textable > 0)}
+        >
+          <Icon name="pause" /> Pause line
+        </button>
+        <button type="button" className="btn secondary" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </Sheet>
   );
 }

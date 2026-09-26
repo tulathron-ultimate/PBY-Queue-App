@@ -256,6 +256,10 @@ svg.icon {
 .content.with-callbar {
   padding-bottom: calc(max(80px, 25vh) + 28px + 16px + env(safe-area-inset-bottom));
 }
+/* E6: the paused strip above the Call next bar is about 72px tall. */
+.content.with-pausebar {
+  padding-bottom: calc(max(80px, 25vh) + 28px + 16px + 76px + env(safe-area-inset-bottom));
+}
 
 .topbar {
   display: flex;
@@ -334,6 +338,16 @@ svg.icon {
 .live.reconnecting::before {
   background: var(--upnext);
 }
+.live.paused {
+  background: var(--upnext);
+  color: var(--on-upnext);
+  border-color: var(--upnext);
+}
+.live.paused::before {
+  width: 8px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, currentColor 35%, transparent 35% 65%, currentColor 65%);
+}
 .live.offline {
   background: var(--noshow-tint);
   border-color: var(--noshow);
@@ -377,6 +391,22 @@ svg.icon {
 .banner.danger {
   background: var(--noshow-tint);
   border-left-color: var(--noshow);
+}
+.banner.paused {
+  font-weight: 600;
+}
+.banner .pause-head svg.icon {
+  width: 20px;
+  height: 20px;
+  vertical-align: -4px;
+  stroke-width: 3;
+}
+.banner .pause-msg {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--fs-base);
+  font-weight: 800;
+  overflow-wrap: anywhere;
 }
 .banner.ok {
   background: var(--serving-tint);
@@ -692,6 +722,40 @@ svg.icon {
 .screen.guest ~ .bottombar .inner,
 .bottombar.guest .inner {
   max-width: 480px;
+}
+.pausebar {
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 0;
+}
+.pausebar .txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--upnext-tint);
+  border-left: 6px solid var(--upnext);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.pausebar .txt > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pausebar .btn {
+  width: auto;
+  flex: none;
+  min-height: 56px;
 }
 .addbtn {
   width: 80px;
@@ -1463,6 +1527,237 @@ textarea.input {
 .serving-card.flash {
   animation: flash 0.6s ease-out;
 }
+/* ---------- L1 / G5 lobby display (16:9 TV or tablet, always dark) ---------- */
+.lobby {
+  /* One unit scales everything to the screen, letterboxed to 16:9. */
+  --u: min(1vw, 1.7778vh);
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 58fr 42fr;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'head head'
+    'paused paused'
+    'now next'
+    'foot foot';
+  background: var(--bg);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.lb-head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--u) * 2);
+  padding: calc(var(--u) * 1.6) calc(var(--u) * 3);
+}
+.lb-head h1 {
+  margin: 0;
+  font-size: calc(var(--u) * 4);
+  line-height: 1.1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lb-head .live {
+  font-size: calc(var(--u) * 1.3);
+}
+.lb-paused {
+  grid-area: paused;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 1.6);
+  margin: 0 calc(var(--u) * 3) calc(var(--u) * 1.6);
+  padding: calc(var(--u) * 1.4) calc(var(--u) * 2.4);
+  border-radius: var(--r-lg);
+  background: var(--upnext);
+  color: var(--on-upnext);
+  font-size: calc(var(--u) * 2.4);
+  font-weight: 700;
+  line-height: 1.25;
+}
+.lb-paused svg.icon {
+  width: calc(var(--u) * 4);
+  height: calc(var(--u) * 4);
+  stroke-width: 3;
+}
+.lb-paused .msg {
+  display: block;
+  font-size: calc(var(--u) * 2.8);
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+.lb-now {
+  grid-area: now;
+  min-width: 0;
+  margin: 0 calc(var(--u) * 1.5) 0 calc(var(--u) * 3);
+  padding: calc(var(--u) * 2.5) calc(var(--u) * 3.5);
+  border-radius: var(--r-lg);
+  background: var(--serving);
+  color: var(--on-serving);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+.lobby.is-paused .lb-now {
+  opacity: 0.8;
+}
+.lobby.is-paused .lb-now .n {
+  font-size: calc(var(--u) * 10);
+}
+.lobby.is-paused .lb-next .it {
+  min-height: calc(var(--u) * 4.6);
+  font-size: calc(var(--u) * 2.6);
+}
+/* The paused banner takes the room of the 5th ticket. */
+.lobby.is-paused .lb-next .it:nth-child(n + 6) {
+  display: none;
+}
+.lobby.is-paused .lb-next .tk {
+  height: calc(var(--u) * 4);
+}
+.lb-now.flash {
+  animation: flash 1s ease-out;
+}
+.lb-now .lbl,
+.lb-next .lbl {
+  font-size: calc(var(--u) * 2);
+}
+.lb-now .n {
+  font-size: calc(var(--u) * 14);
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  margin: calc(var(--u) * 0.8) 0;
+}
+.lb-now .nm {
+  font-size: calc(var(--u) * 4.6);
+  line-height: 1.1;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lb-now .nm.idle {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: calc(var(--u) * 7);
+  margin-top: calc(var(--u) * 2);
+}
+.lb-next {
+  grid-area: next;
+  min-width: 0;
+  padding: calc(var(--u) * 1) calc(var(--u) * 3) 0 calc(var(--u) * 1.5);
+  overflow: hidden;
+}
+.lb-next .lbl {
+  color: var(--text-muted);
+  margin-bottom: calc(var(--u) * 0.8);
+}
+.lb-next .it {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 1.6);
+  min-height: calc(var(--u) * 5.9);
+  font-size: calc(var(--u) * 3);
+  font-weight: 800;
+  border-bottom: 1px solid var(--surface-2);
+  min-width: 0;
+}
+.lb-next .it .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lb-next .tk {
+  min-width: calc(var(--u) * 8.5);
+  height: calc(var(--u) * 5);
+  font-size: calc(var(--u) * 2.8);
+  border-radius: var(--r-md);
+}
+.lb-next .it.first .tk {
+  background: var(--upnext);
+  color: var(--on-upnext);
+}
+.lb-next .empty {
+  font-size: calc(var(--u) * 2.6);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.lb-foot {
+  grid-area: foot;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 2.4);
+  margin-top: calc(var(--u) * 1.6);
+  padding: calc(var(--u) * 1) calc(var(--u) * 3);
+  background: var(--surface);
+  font-size: calc(var(--u) * 2.6);
+}
+.lb-foot .q {
+  width: calc(var(--u) * 9);
+  height: calc(var(--u) * 9);
+  background: #fff;
+  padding: calc(var(--u) * 0.5);
+  border-radius: var(--r-sm);
+}
+.lb-foot b {
+  display: block;
+  font-weight: 800;
+}
+.lb-foot small {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(var(--u) * 2);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.lb-full {
+  margin-left: auto;
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  border: 2px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.lobby-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: calc(var(--u) * 4);
+  font-size: calc(var(--u) * 3);
+}
+.lobby-msg h1 {
+  font-size: calc(var(--u) * 6);
+  margin: 0 0 calc(var(--u) * 2);
+}
+/* A tablet held upright: stack the panels. */
+@media (orientation: portrait) {
+  .lobby:not(.lobby-msg) {
+    --u: min(1.6vw, 1vh);
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas: 'head' 'paused' 'now' 'next' 'foot';
+  }
+  .lb-now {
+    margin: 0 calc(var(--u) * 3);
+  }
+  .lb-next {
+    padding: calc(var(--u) * 2) calc(var(--u) * 3) 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
